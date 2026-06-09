@@ -18,11 +18,15 @@ model User {
   securityQuestion    String?
   /// 密保答案的 bcrypt 哈希
   securityAnswerHash  String?
+  /// 职业（用于数据大屏职业统计）
+  occupation          String?
   lastActiveAt        DateTime?
   createdAt           DateTime @default(now())
   admin               Admin?
   quizzes             Quiz[]
   results             QuizResult[]
+  professionId        String?
+  profession          Profession? @relation(fields: [professionId], references: [id])
 }
 
 model Admin {
@@ -44,8 +48,9 @@ model Quiz {
   /// 题库分类 id。格式 "preset:<key>"(系统预设) 或 "user:<id>"(用户私有) 或 null(未分类)
   /// 用 string + 前缀方案避免两张分类表的 id 空间冲突
   categoryId String?  @db.VarChar(64)
-  results    QuizResult[]
-  createdAt  DateTime @default(now())
+  results     QuizResult[]
+  assignments QuizAssignment[]
+  createdAt   DateTime @default(now())
 
   /// 文件内容 SHA-256 指纹(hex)。null = 旧数据(无指纹,不参与去重)
   fileKey           String?
@@ -71,4 +76,26 @@ model QuizResult {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   status      String   @default("submitted")
   submittedAt DateTime @default(now())
+}
+
+model Profession {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  createdAt   DateTime         @default(now())
+  users       User[]
+  assignments QuizAssignment[]
+}
+
+model QuizAssignment {
+  id           String     @id @default(cuid())
+  quizId       String
+  quiz         Quiz       @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  professionId String
+  profession   Profession @relation(fields: [professionId], references: [id], onDelete: Cascade)
+  userId       String?
+  createdAt    DateTime   @default(now())
+
+  @@unique([quizId, professionId, userId])
+  @@index([professionId])
+  @@index([userId])
 }
