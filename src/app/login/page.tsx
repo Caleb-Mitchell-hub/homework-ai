@@ -24,6 +24,9 @@ export default function LoginPage() {
   // 注册 - 密保问题
   const [securityQuestion, setSecurityQuestion] = useState<string>(PREDEFINED_QUESTIONS[0].key);
   const [securityAnswer, setSecurityAnswer] = useState('');
+  // 职业选择
+  const [professionId, setProfessionId] = useState('');
+  const [professions, setProfessions] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     setAnimateIn(true);
@@ -86,6 +89,14 @@ export default function LoginPage() {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', handleResize);
     };
+  }, []);
+
+  // 加载职业列表
+  useEffect(() => {
+    fetch('/api/professions')
+      .then((res) => res.json())
+      .then((data) => { if (data.professions) setProfessions(data.professions); })
+      .catch(() => {});
   }, []);
 
   // 注册模式实时查重 + 切换模式时清空状态
@@ -175,7 +186,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, securityQuestion, securityAnswer: securityAnswer.trim() }),
+        body: JSON.stringify({ username, password, securityQuestion, securityAnswer: securityAnswer.trim(), professionId: professionId || null }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -210,7 +221,7 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/auth/guest', { method: 'POST' });
+      const res = await fetch('/api/auth/guest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ professionId: professionId || null }) });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || '游客登录失败');
@@ -402,6 +413,23 @@ export default function LoginPage() {
                   >
                     忘记密码？
                   </button>
+                </div>
+              )}
+
+              {/* 职业选择 - 仅注册/游客模式 */}
+              {(mode === 'register' || mode === 'guest') && (
+                <div>
+                  <label className="block text-sm text-slate-600 mb-2 ml-1 font-medium">职业（可选）</label>
+                  <select
+                    value={professionId}
+                    onChange={(e) => setProfessionId(e.target.value)}
+                    className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 transition-all"
+                  >
+                    <option value="">请选择职业</option>
+                    {professions.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
                 </div>
               )}
 

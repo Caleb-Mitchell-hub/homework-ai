@@ -22,6 +22,8 @@ export async function GET(request: Request) {
         isGuest: true,
         disabled: true,
         createdAt: true,
+        professionId: true,
+        profession: { select: { id: true, name: true } },
       },
     });
 
@@ -33,7 +35,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: '账号已被停用' }, { status: 403 });
     }
 
-    return NextResponse.json({ user });
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        isGuest: user.isGuest,
+        disabled: user.disabled,
+        createdAt: user.createdAt,
+        professionId: user.professionId ?? null,
+        professionName: user.profession?.name ?? null,
+      },
+    });
   } catch (error) {
     console.error('获取用户信息错误:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });

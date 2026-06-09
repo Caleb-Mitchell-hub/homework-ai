@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateToken } from '@/lib/auth';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const { professionId } = await request.json().catch(() => ({}));
     const guestId = 'guest_' + Date.now();
     const guestUsername = '游客_' + Math.random().toString(36).substring(2, 8);
 
@@ -13,6 +14,7 @@ export async function POST() {
         username: guestUsername,
         password: '', // 游客不需要密码
         isGuest: true,
+        professionId: professionId || null,
       },
     });
 
@@ -20,6 +22,7 @@ export async function POST() {
       userId: user.id,
       username: user.username,
       isGuest: user.isGuest,
+      professionId: user.professionId,
     });
 
     return NextResponse.json({
@@ -43,6 +46,7 @@ export async function POST() {
           userId: existingGuest.id,
           username: existingGuest.username,
           isGuest: existingGuest.isGuest,
+          professionId: existingGuest.professionId,
         });
 
         return NextResponse.json({

@@ -5,6 +5,7 @@ export interface JWTPayload {
   userId: string;
   username: string;
   isGuest: boolean;
+  professionId: string | null;
 }
 
 export function generateToken(payload: JWTPayload): string {

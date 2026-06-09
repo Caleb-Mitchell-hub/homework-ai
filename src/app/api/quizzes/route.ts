@@ -46,17 +46,38 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const categoryFilter = url.searchParams.get('category');
+    const queryProfessionId = url.searchParams.get('professionId');
 
-    // 返回两类题库:
-    //  1) 用户自己上传的(userId = current)
-    //  2) 所有官方发布的(isOfficial = true,任何用户可见可答)
-    // category 过滤(可选):all | 预设 key | user 分类 raw id | "uncat"
-    let where: any = {
-      OR: [
-        { userId: payload.userId },
-        { isOfficial: true },
-      ],
-    };
+    // 游客用 queryProfessionId，登录用户用 payload.professionId
+    const effectiveProfessionId = payload.isGuest
+      ? (queryProfessionId || payload.professionId)
+      : payload.professionId;
+
+    // 查询分配给用户的 quizId（通过职业大方向或精确到人）
+    let assignedQuizIds: string[] = [];
+    if (effectiveProfessionId) {
+      const assignments = await prisma.quizAssignment.findMany({
+        where: {
+          professionId: effectiveProfessionId,
+          OR: [
+            { userId: null },
+            { userId: payload.userId },
+          ],
+        },
+        select: { quizId: true },
+      });
+      assignedQuizIds = assignments.map((a) => a.quizId);
+    }
+
+    // 构建 where：自己的题库 + 分配的题库 + 官方题库
+    const orConditions: any[] = [
+      { userId: payload.userId },
+      { isOfficial: true },
+    ];
+    if (assignedQuizIds.length > 0) {
+      orConditions.push({ id: { in: assignedQuizIds } });
+    }
+    let where: any = { OR: orConditions };
     if (categoryFilter && categoryFilter !== 'all') {
       if (categoryFilter === 'uncat') {
         where = { AND: [where, { categoryId: null }] };
@@ -70,9 +91,14 @@ export async function GET(request: Request) {
       }
     }
 
+    // 游客选职业后限量显示
+    const isGuest = payload.isGuest;
+    const takeLimit = isGuest && effectiveProfessionId ? 5 : undefined;
+
     const quizzes = await prisma.quiz.findMany({
       where,
       orderBy: [{ isOfficial: 'desc' }, { createdAt: 'desc' }],
+      ...(takeLimit ? { take: takeLimit } : {}),
       include: {
         results: {
           where: { userId: payload.userId },

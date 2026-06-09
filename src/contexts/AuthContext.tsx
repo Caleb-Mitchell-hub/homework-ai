@@ -7,6 +7,7 @@ interface User {
   id: string;
   username: string;
   isGuest: boolean;
+  professionId?: string | null;
 }
 
 interface AuthContextType {

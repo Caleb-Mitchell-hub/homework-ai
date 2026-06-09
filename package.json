@@ -11,6 +11,8 @@
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^3.0.3",
+    "echarts": "^6.1.0",
+    "echarts-for-react": "^3.0.6",
     "jsonwebtoken": "^9.0.3",
     "marked": "^18.0.4",
     "next": "16.2.6",

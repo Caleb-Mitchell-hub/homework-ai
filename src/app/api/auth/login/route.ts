@@ -37,6 +37,7 @@ export async function POST(request: Request) {
       userId: user.id,
       username: user.username,
       isGuest: user.isGuest,
+      professionId: user.professionId,
     });
 
     return NextResponse.json({

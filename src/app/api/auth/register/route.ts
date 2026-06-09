@@ -5,7 +5,7 @@ import { PREDEFINED_QUESTIONS } from '@/lib/securityQuestions';
 
 export async function POST(request: Request) {
   try {
-    const { username, password, securityQuestion, securityAnswer } = await request.json();
+    const { username, password, securityQuestion, securityAnswer, professionId } = await request.json();
 
     if (!username || !password) {
       return NextResponse.json({ error: '用户名和密码不能为空' }, { status: 400 });
@@ -50,6 +50,7 @@ export async function POST(request: Request) {
         isGuest: false,
         securityQuestion,
         securityAnswerHash: hashedAnswer,
+        professionId: professionId || null,
       },
     });
 

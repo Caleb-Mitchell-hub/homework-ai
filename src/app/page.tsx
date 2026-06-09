@@ -21,6 +21,10 @@ export default function Home() {
   const { user, token, loading } = useAuth();
   const [quizzes, setQuizzes] = useState<QuizListItem[]>([]);
   const [loadingQuizzes, setLoadingQuizzes] = useState(true);
+  const [professions, setProfessions] = useState<{ id: string; name: string }[]>([]);
+  const [guestProfessionId, setGuestProfessionId] = useState<string>(
+    typeof window !== 'undefined' ? localStorage.getItem('guestProfessionId') || '' : ''
+  );
 
   const activeCategory = searchParams.get('category') ?? 'all';
 
@@ -30,15 +34,35 @@ export default function Home() {
     }
   }, [user, loading, router]);
 
+  // 加载职业列表
+  useEffect(() => {
+    fetch('/api/professions')
+      .then((res) => res.json())
+      .then((data) => { if (data.professions) setProfessions(data.professions); })
+      .catch(() => {});
+  }, []);
+
+  // 监听游客职业切换事件
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setGuestProfessionId((e as CustomEvent).detail || '');
+    };
+    window.addEventListener('guest-profession-changed', handler);
+    return () => window.removeEventListener('guest-profession-changed', handler);
+  }, []);
+
   // 拉取题库列表(自己的 + 所有官方的)
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
     (async () => {
       try {
-        const url = activeCategory && activeCategory !== 'all'
-          ? `/api/quizzes?category=${encodeURIComponent(activeCategory)}`
-          : '/api/quizzes';
+        const params = new URLSearchParams();
+        if (activeCategory && activeCategory !== 'all') params.set('category', activeCategory);
+        // 游客传 professionId
+        if (user?.isGuest && guestProfessionId) params.set('professionId', guestProfessionId);
+        const qs = params.toString();
+        const url = qs ? `/api/quizzes?${qs}` : '/api/quizzes';
         const res = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -55,7 +79,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [token, activeCategory]);
+  }, [token, activeCategory, guestProfessionId, user?.isGuest]);
 
   // 统计每个分类下的题库数(从全量请求,仅在 "全部"tab 时展示)
   const categoryCounts = useMemo(() => {
@@ -97,6 +121,58 @@ export default function Home() {
         <div className="text-center">
           <h1 className="text-3xl font-bold text-slate-800 mb-2">在线答题系统</h1>
           <p className="text-slate-500 text-sm">选择官方题库,或上传自己的 Markdown 题目开始答题</p>
+
+          {/* 游客职业切换 */}
+          {user?.isGuest && (
+            <div className="flex items-center justify-center gap-2 mt-3">
+              <span className="text-[11px] text-slate-400">当前职业：</span>
+              <select
+                value={guestProfessionId}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setGuestProfessionId(v);
+                  if (v) localStorage.setItem('guestProfessionId', v);
+                  else localStorage.removeItem('guestProfessionId');
+                }}
+                className="text-[12px] px-3 py-1.5 bg-white/80 border border-slate-200 rounded-lg text-slate-600 focus:outline-none focus:border-sky-400"
+              >
+                <option value="">未选择</option>
+                {professions.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 登录用户未选择职业提示 */}
+          {user && !user.isGuest && !user.professionId && (
+            <div className="mt-3 p-2.5 bg-sky-50 border border-sky-200 rounded-xl text-[12.5px] text-sky-700 inline-flex items-center gap-2">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>暂未选择职业，部分题库可能不可见。</span>
+              <select
+                value={user.professionId || ''}
+                onChange={async (e) => {
+                  const v = e.target.value || null;
+                  const token = localStorage.getItem('token');
+                  if (!token) return;
+                  await fetch('/api/user/profession', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ professionId: v }),
+                  });
+                  window.location.reload();
+                }}
+                className="text-[12px] px-2 py-1 bg-white border border-sky-300 rounded-lg text-sky-700 focus:outline-none"
+              >
+                <option value="">选择职业</option>
+                {professions.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* 分类筛选 tab */}

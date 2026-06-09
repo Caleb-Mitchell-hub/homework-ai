@@ -1,0 +1,1 @@
+ALTER TABLE `User` ADD COLUMN `occupation` VARCHAR(100) NULL;
