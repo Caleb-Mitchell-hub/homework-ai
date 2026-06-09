@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --base-font-size: 16px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-fraunces);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: var(--base-font-size);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* ─────────────────────────────────────────────
+   抽屉 + 遮罩 的丝滑过渡（取代旧的 keyframe）
+   - 遮罩：透明度 + 1.5% 微缩放（柔光感）
+   - 抽屉：translateX + 5px 横向缩放（卡片感）
+   - 内容：依次浮入 40/80/120ms
+   ───────────────────────────────────────────── */
+
+@keyframes drawer-scrim-in {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(2px);
+  }
+}
+
+@keyframes drawer-scrim-out {
+  from {
+    opacity: 1;
+    backdrop-filter: blur(2px);
+  }
+  to {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+}
+
+@keyframes drawer-panel-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-110%) scale(0.985);
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes drawer-panel-out {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0.4;
+    transform: translateX(-100%) scale(0.985);
+  }
+}
+
+@keyframes drawer-stagger-1 {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes drawer-stagger-2 {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes drawer-stagger-3 {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* 触发按钮 - 按下时弹簧微缩 */
+@keyframes drawer-trigger-press {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+
+.anim-scrim-in {
+  animation: drawer-scrim-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.anim-scrim-out {
+  animation: drawer-scrim-out 0.32s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+.anim-panel-in {
+  animation: drawer-panel-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+.anim-panel-out {
+  animation: drawer-panel-out 0.32s cubic-bezier(0.4, 0, 1, 1) forwards;
+  will-change: transform, opacity;
+}
+.anim-stagger-1 {
+  animation: drawer-stagger-1 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.10s both;
+}
+.anim-stagger-2 {
+  animation: drawer-stagger-2 0.5s  cubic-bezier(0.16, 1, 0.3, 1) 0.18s both;
+}
+.anim-stagger-3 {
+  animation: drawer-stagger-3 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.26s both;
+}
+.anim-trigger-press {
+  animation: drawer-trigger-press 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}

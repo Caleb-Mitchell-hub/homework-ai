@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String   @id @default(cuid())
+  username            String   @unique
+  password            String
+  isGuest             Boolean  @default(false)
+  /// 是否被管理员停用（停用后无法登录）
+  disabled            Boolean  @default(false)
+  /// 密保问题（预设问题的 key,如 "first_pet"）
+  securityQuestion    String?
+  /// 密保答案的 bcrypt 哈希
+  securityAnswerHash  String?
+  lastActiveAt        DateTime?
+  createdAt           DateTime @default(now())
+  admin               Admin?
+  quizzes             Quiz[]
+  results             QuizResult[]
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Quiz {
+  id         String   @id @default(cuid())
+  title      String
+  questions  String   @db.Text
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isOfficial Boolean  @default(false)
+  /// 答题时长（分钟），0 = 不限时
+  timeLimit  Int      @default(0)
+  /// 题库分类 id。格式 "preset:<key>"(系统预设) 或 "user:<id>"(用户私有) 或 null(未分类)
+  /// 用 string + 前缀方案避免两张分类表的 id 空间冲突
+  categoryId String?  @db.VarChar(64)
+  results    QuizResult[]
+  createdAt  DateTime @default(now())
+
+  /// 文件内容 SHA-256 指纹(hex)。null = 旧数据(无指纹,不参与去重)
+  fileKey           String?
+  /// 用户首次保存时设定的记录名(后续可改,作为暂存/提交默认值)
+  defaultName       String?
+  /// 默认归档分类 id(对应 CategoryContext localStorage 里的 Category.id)
+  defaultCategoryId String?
+
+  @@index([categoryId])
+  @@unique([userId, fileKey])
+  @@index([userId, fileKey])
+}
+
+model QuizResult {
+  id          String   @id @default(cuid())
+  name        String
+  score       Int      @default(0)
+  totalScore  Int      @default(0)
+  results     String   @db.Text
+  quizId      String
+  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      String   @default("submitted")
+  submittedAt DateTime @default(now())
+}

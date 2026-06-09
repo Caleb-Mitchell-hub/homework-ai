@@ -1,0 +1,176 @@
+
+> homework-ai@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.14.1:3000
+- Environments: .env
+✓ Ready in 553ms
+
+ GET / 200 in 434ms (next.js: 248ms, application-code: 186ms)
+ GET /api/results 200 in 296ms (next.js: 110ms, application-code: 186ms)
+ GET /api/results 200 in 12ms (next.js: 2ms, application-code: 10ms)
+[init-admin] Default admin created: admin
+ GET /api/init 200 in 410ms (next.js: 246ms, application-code: 163ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 567ms (next.js: 543ms, application-code: 24ms)
+ GET /api/quizzes/cmpq711y80001hqpqykldmpro 200 in 669ms (next.js: 655ms, application-code: 14ms)
+ GET /api/quizzes/cmpq711y80001hqpqykldmpro 200 in 51ms (next.js: 43ms, application-code: 8ms)
+ GET /api/results 200 in 9ms (next.js: 3ms, application-code: 6ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 148ms (next.js: 71ms, application-code: 76ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 133ms (next.js: 3ms, application-code: 129ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 114ms (next.js: 6ms, application-code: 108ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 116ms (next.js: 24ms, application-code: 92ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 117ms (next.js: 42ms, application-code: 75ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 141ms (next.js: 59ms, application-code: 82ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 71ms (next.js: 4ms, application-code: 67ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 140ms (next.js: 7ms, application-code: 133ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 129ms (next.js: 5ms, application-code: 124ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 128ms (next.js: 51ms, application-code: 77ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 129ms (next.js: 29ms, application-code: 101ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 85ms (next.js: 4ms, application-code: 81ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 63ms (next.js: 4ms, application-code: 58ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 178ms (next.js: 9ms, application-code: 169ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 174ms (next.js: 8ms, application-code: 166ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 148ms (next.js: 66ms, application-code: 81ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 149ms (next.js: 47ms, application-code: 102ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 94ms (next.js: 5ms, application-code: 89ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 73ms (next.js: 4ms, application-code: 68ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 141ms (next.js: 4ms, application-code: 137ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 129ms (next.js: 5ms, application-code: 124ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 128ms (next.js: 28ms, application-code: 100ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 107ms (next.js: 26ms, application-code: 81ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 83ms (next.js: 5ms, application-code: 78ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 60ms (next.js: 4ms, application-code: 56ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 121ms (next.js: 4ms, application-code: 116ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 120ms (next.js: 4ms, application-code: 116ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 123ms (next.js: 22ms, application-code: 101ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 154ms (next.js: 3ms, application-code: 150ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 128ms (next.js: 3ms, application-code: 126ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 110ms (next.js: 3ms, application-code: 106ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 114ms (next.js: 49ms, application-code: 66ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 42ms (next.js: 3ms, application-code: 38ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 23ms (next.js: 3ms, application-code: 20ms)
+ GET /api/results 200 in 63ms (next.js: 29ms, application-code: 34ms)
+ GET /api/results 200 in 10ms (next.js: 2ms, application-code: 8ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 135ms (next.js: 67ms, application-code: 68ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 125ms (next.js: 3ms, application-code: 122ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 107ms (next.js: 5ms, application-code: 102ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 133ms (next.js: 59ms, application-code: 74ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 134ms (next.js: 41ms, application-code: 93ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 135ms (next.js: 25ms, application-code: 110ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 67ms (next.js: 3ms, application-code: 64ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 124ms (next.js: 5ms, application-code: 118ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 133ms (next.js: 4ms, application-code: 129ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 133ms (next.js: 20ms, application-code: 113ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 133ms (next.js: 39ms, application-code: 94ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 133ms (next.js: 56ms, application-code: 78ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 69ms (next.js: 4ms, application-code: 64ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 121ms (next.js: 4ms, application-code: 117ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 192ms (next.js: 3ms, application-code: 189ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 193ms (next.js: 20ms, application-code: 173ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 193ms (next.js: 57ms, application-code: 137ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 195ms (next.js: 39ms, application-code: 156ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 125ms (next.js: 46ms, application-code: 79ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 143ms (next.js: 4ms, application-code: 139ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 164ms (next.js: 5ms, application-code: 159ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 164ms (next.js: 26ms, application-code: 138ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 164ms (next.js: 43ms, application-code: 121ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 164ms (next.js: 64ms, application-code: 100ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 86ms (next.js: 5ms, application-code: 81ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 133ms (next.js: 5ms, application-code: 128ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 152ms (next.js: 4ms, application-code: 148ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 152ms (next.js: 28ms, application-code: 124ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 153ms (next.js: 48ms, application-code: 105ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 152ms (next.js: 68ms, application-code: 84ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 68ms (next.js: 3ms, application-code: 65ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 111ms (next.js: 5ms, application-code: 106ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 134ms (next.js: 4ms, application-code: 131ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 134ms (next.js: 25ms, application-code: 109ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 134ms (next.js: 43ms, application-code: 92ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 75ms (next.js: 48ms, application-code: 26ms)
+ POST /api/results 200 in 45ms (next.js: 22ms, application-code: 23ms)
+[browser] Uncaught TypeError: localResult.results.filter is not a function
+    at ResultCard (src/components/ResultCard.tsx:55:42)
+    at QuizPage (src/app/quiz/[id]/page.tsx:180:9)
+  53 |   };
+  54 |
+> 55 |   const autoGraded = localResult.results.filter(r => r.autoGraded).length;
+     |                                          ^
+  56 |   const manualGraded = localResult.results.length - autoGraded;
+  57 |   const correctCount = localResult.results.filter(r => r.correct).length;
+  58 |   const percentage = Math.round((localResult.score / localResult.totalScore) * 100);
+Debugger listening on ws://127.0.0.1:9229/d734bafc-5694-4006-bc69-dc6477e864b8
+For help, see: https://nodejs.org/en/docs/inspector
+ GET /quiz/cmpq711y80001hqpqykldmpro? 200 in 150ms (next.js: 45ms, application-code: 105ms)
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+[browser] Uncaught Error: Internal Next.js error: Router action dispatched before initialization.
+ GET /api/init 200 in 51ms (next.js: 29ms, application-code: 21ms)
+ GET /api/results 200 in 92ms (next.js: 17ms, application-code: 75ms)
+ GET /api/quizzes/cmpq711y80001hqpqykldmpro 200 in 71ms (next.js: 62ms, application-code: 9ms)
+ GET /api/results 200 in 10ms (next.js: 2ms, application-code: 8ms)
+ GET /api/quizzes/cmpq711y80001hqpqykldmpro 200 in 45ms (next.js: 38ms, application-code: 7ms)
+[browser] Uncaught TypeError: localResult.results.filter is not a function
+    at ResultCard (src/components/ResultCard.tsx:55:42)
+    at Layout (src/components/Layout.tsx:76:15)
+    at RootLayout (src\app\layout.tsx:33:11)
+  53 |   };
+  54 |
+> 55 |   const autoGraded = localResult.results.filter(r => r.autoGraded).length;
+     |                                          ^
+  56 |   const manualGraded = localResult.results.length - autoGraded;
+  57 |   const correctCount = localResult.results.filter(r => r.correct).length;
+  58 |   const percentage = Math.round((localResult.score / localResult.totalScore) * 100);
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 146ms (next.js: 60ms, application-code: 86ms)
+ GET /api/init 200 in 8ms (next.js: 3ms, application-code: 5ms)
+ GET /api/results 200 in 62ms (next.js: 3ms, application-code: 59ms)
+ GET /api/quizzes/cmpq711y80001hqpqykldmpro 200 in 56ms (next.js: 46ms, application-code: 10ms)
+ GET /api/results 200 in 9ms (next.js: 1951µs, application-code: 7ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 75ms (next.js: 39ms, application-code: 36ms)
+ GET /api/init 200 in 9ms (next.js: 4ms, application-code: 6ms)
+ GET /api/results 200 in 63ms (next.js: 4ms, application-code: 59ms)
+ GET /api/quizzes/cmpq711y80001hqpqykldmpro 200 in 53ms (next.js: 45ms, application-code: 8ms)
+ GET /api/results 200 in 9ms (next.js: 1897µs, application-code: 7ms)
+ GET /api/results 200 in 10ms (next.js: 2ms, application-code: 8ms)
+ GET /api/results 200 in 7ms (next.js: 1716µs, application-code: 5ms)
+ GET /quiz/cmpq711y80001hqpqykldmpro 200 in 85ms (next.js: 64ms, application-code: 21ms)
+ GET /api/results 200 in 23ms (next.js: 17ms, application-code: 6ms)
+ GET /api/results 200 in 9ms (next.js: 2ms, application-code: 7ms)
+ GET /api/results 200 in 7ms (next.js: 1740µs, application-code: 5ms)
+  Reload env: .env
+[?25h
