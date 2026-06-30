@@ -1,5 +1,15 @@
 node_modules
+.next
+.turbo
+out
+build
+dist
+
 # Keep environment variables out of version control
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 /src/generated/prisma
