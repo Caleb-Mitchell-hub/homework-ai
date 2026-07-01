@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { parseMarkdown, extractTitle } from '@/lib/parser';
 import { Question } from '@/types';
+import DualPreview, { type DualAiState } from '@/components/DualPreview';
 
 const ALLOWED_ACCEPT = '.md,.txt,.pdf,.docx,.png,.jpg,.jpeg,.webp';
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -36,6 +37,8 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const { token } = useAuth();
+  const [aiState, setAiState] = useState<DualAiState>({ status: 'idle' });
+  const [aiStart, setAiStart] = useState(0);
 
   const isAdmin = tone === 'admin';
   const gradient = isAdmin
@@ -108,6 +111,34 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
     },
     [handleFile]
   );
+
+  const fetchAi = async () => {
+    if (!preview.trim()) return;
+    setAiStart(Date.now());
+    setAiState({ status: 'loading', elapsed: 0 });
+    try {
+      const res = await fetch('/api/ai/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text: preview }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? '解析失败');
+      setAiState({ status: 'done', questions: data.questions ?? [] });
+    } catch (err: any) {
+      setAiState({ status: 'error', message: String(err?.message ?? err) });
+    }
+  };
+
+  useEffect(() => {
+    if (aiState.status !== 'loading') return;
+    const t = setInterval(() => {
+      setAiState((s) => s.status === 'loading'
+        ? { ...s, elapsed: Math.floor((Date.now() - aiStart) / 1000) }
+        : s);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [aiState.status, aiStart]);
 
   const handleParse = async () => {
     if (!preview.trim()) {
@@ -182,6 +213,29 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
           placeholder={`# 题库标题\n## 一、单选题\n1. ...\nA. ...\nB. ...\n答案：A\n## 二、...\n## 七、答案\n1. A 2. ...`}
           className={`w-full h-64 p-4 bg-white/80 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none ${focusBorder} focus:ring-4 resize-none font-mono text-sm shadow-sm`}
         />
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            onClick={fetchAi}
+            disabled={aiState.status === 'loading' || !preview.trim()}
+            className="px-3 py-1.5 bg-violet-500 text-white text-[12px] rounded-lg hover:bg-violet-600 disabled:opacity-50"
+          >
+            {aiState.status === 'loading' ? 'AI 解析中...' : '🧠 AI 解析'}
+          </button>
+          {aiState.status === 'done' && (
+            <span className="text-[11px] text-emerald-600">✓ AI: {aiState.questions.length} 道题</span>
+          )}
+          {aiState.status === 'error' && (
+            <span className="text-[11px] text-rose-600">⚠ {aiState.message}</span>
+          )}
+          {aiState.status === 'loading' && (
+            <span className="text-[11px] text-slate-400">⏳ {aiState.elapsed}s</span>
+          )}
+        </div>
+        {aiState.status === 'error' && aiState.message.includes('未配置 AI 厂商') && (
+          <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-[12px]">
+            ⚠ 未配置 AI 厂商,当前仅可使用本地解析。请管理员在「AI 配置」中设置激活厂商后再使用 AI 解析。
+          </div>
+        )}
       </div>
 
       {/* 错误提示 */}
