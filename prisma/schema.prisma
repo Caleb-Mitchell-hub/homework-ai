@@ -99,3 +99,30 @@ model QuizAssignment {
   @@index([professionId])
   @@index([userId])
 }
+
+/// 管理员配置的 AI 厂商(用于题目解析)
+model AIProviderConfig {
+  id              String   @id @default(cuid())
+  /// 友好名,如 "DeepSeek 主用"
+  name            String
+  /// 厂商 key: "deepseek" | "doubao" | "qwen" | "zhipu" | "custom"
+  provider        String
+  /// OpenAI 兼容 baseURL
+  baseURL         String
+  /// AES-256-GCM 加密后的 API key (iv + tag + ciphertext, base64)
+  apiKeyCipher    String   @db.Text
+  /// API key 末 4 位(用于 UI 展示,不暴露明文)
+  apiKeyLast4     String
+  /// 主对话模型
+  model           String
+  /// 视觉模型(可选)
+  visionModel     String?
+  /// 是否启用图片识别
+  supportsVision  Boolean  @default(false)
+  /// 当前激活厂商(全局唯一,通过事务切换)
+  isActive        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([isActive])
+}
