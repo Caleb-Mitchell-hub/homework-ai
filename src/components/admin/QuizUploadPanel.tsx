@@ -1,8 +1,20 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { parseMarkdown, extractTitle } from '@/lib/parser';
 import { Question } from '@/types';
+
+const ALLOWED_ACCEPT = '.md,.txt,.pdf,.docx,.png,.jpg,.jpeg,.webp';
+const MAX_BYTES = 10 * 1024 * 1024;
+const ALLOWED_EXT = ['md', 'txt', 'pdf', 'docx', 'png', 'jpg', 'jpeg', 'webp'];
+
+function resolveFileAccept(file: File): 'text' | 'upload' {
+  const ext = file.name.toLowerCase().split('.').pop() ?? '';
+  if (ext === 'md' || ext === 'txt') return 'text';
+  if (ALLOWED_EXT.includes(ext)) return 'upload';
+  return 'text';
+}
 
 type Tone = 'admin' | 'user';
 
@@ -23,6 +35,7 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
   const [preview, setPreview] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const { token } = useAuth();
 
   const isAdmin = tone === 'admin';
   const gradient = isAdmin
@@ -38,10 +51,14 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
   const borderHover = isAdmin ? 'hover:border-indigo-400' : 'hover:border-sky-400';
   const textHover = isAdmin ? 'hover:text-indigo-600' : 'hover:text-sky-600';
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
-    if (selected) {
-      setError('');
+  const handleFile = useCallback(async (file: File) => {
+    setError('');
+    if (file.size > MAX_BYTES) {
+      setError(`文件超过 10MB 限制`);
+      return;
+    }
+    const mode = resolveFileAccept(file);
+    if (mode === 'text') {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const result = ev.target?.result as string;
@@ -49,27 +66,47 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
         else setError('文件读取失败，请尝试重新选择文件');
       };
       reader.onerror = () => setError('文件读取失败，请尝试重新选择文件');
-      reader.readAsText(selected);
+      reader.readAsText(file);
+    } else {
+      setIsLoading(true);
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? '上传失败');
+        setPreview(data.text ?? '');
+      } catch (err: any) {
+        setError(String(err?.message ?? err));
+      } finally {
+        setIsLoading(false);
+      }
     }
-  }, []);
+  }, [token]);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (selected) handleFile(selected);
+  }, [handleFile]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       const file = e.dataTransfer.files[0];
-      if (file && (file.name.endsWith('.md') || file.name.endsWith('.txt'))) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const result = ev.target?.result as string;
-          if (result) setPreview(result);
-          else setError('文件读取失败');
-        };
-        reader.readAsText(file);
-      } else {
-        setError('请上传 .md 或 .txt 文件');
+      if (file) {
+        const ext = file.name.toLowerCase().split('.').pop() ?? '';
+        if (ALLOWED_EXT.includes(ext)) {
+          handleFile(file);
+        } else {
+          setError(`不支持的文件类型: .${ext || '未知'}`);
+        }
       }
     },
-    []
+    [handleFile]
   );
 
   const handleParse = async () => {
@@ -127,12 +164,12 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
             </span>
             <input
               type="file"
-              accept=".md,.txt"
+              accept={ALLOWED_ACCEPT}
               onChange={handleFileChange}
               className="hidden"
             />
           </label>
-          <p className="mt-3 text-slate-400 text-xs">支持 .md / .txt 格式</p>
+          <p className="mt-3 text-slate-400 text-xs">支持 .md / .txt / .pdf / .docx / 图片</p>
         </div>
       </div>
 
