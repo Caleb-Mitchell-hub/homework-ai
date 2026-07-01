@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import './env'; // 启动校验 AI_KEY_ENCRYPTION_SECRET
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
