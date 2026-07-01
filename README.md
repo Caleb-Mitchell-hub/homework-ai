@@ -34,3 +34,16 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## AI 厂商配置(题目解析)
+
+为提升代码题解析质量,系统支持调用 AI 模型。
+
+1. 在 `.env` 配置 `AI_KEY_ENCRYPTION_SECRET`(≥ 32 字符):
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   ```
+
+2. 管理员登录后台 → 侧栏「AI 配置」→ 新增厂商 → 填 API Key → 设为激活
+
+3. 用户上传题目时,本地解析与 AI 解析并行,前端可切换预览
