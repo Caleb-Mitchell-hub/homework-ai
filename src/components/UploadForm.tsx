@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { parseMarkdown, extractTitle } from '@/lib/parser';
 import { sha256Hex } from '@/lib/hash';
+import type { Question as QuestionType } from '@/types';
 
 interface Question {
   type: 'single' | 'multiple' | 'judge' | 'fill' | 'essay' | 'code';
@@ -48,6 +49,9 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
   const [showManualEditor, setShowManualEditor] = useState(forceManual);
   const [manualQuestions, setManualQuestions] = useState<Question[]>([createEmptyQuestion('single')]);
   const [manualTitle, setManualTitle] = useState('');
+  const [aiQuestions, setAiQuestions] = useState<QuestionType[] | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
   const router = useRouter();
   const { token } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -98,6 +102,32 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
       reader.readAsText(selected);
     }
   }, []);
+
+  const handleAiParse = async () => {
+    if (!preview.trim()) {
+      setAiError('请先上传文件');
+      return;
+    }
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const res = await fetch('/api/ai/parse', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text: preview }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? '解析失败');
+      setAiQuestions(data.questions ?? []);
+    } catch (err: any) {
+      setAiError(String(err?.message ?? err));
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const handleParse = async () => {
     if (!preview.trim()) {
@@ -518,6 +548,11 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
         >
+          {aiError?.includes('未配置 AI 厂商') && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg text-[12px] mb-3">
+              未配置 AI 厂商,请管理员在「AI 配置」中设置后再使用
+            </div>
+          )}
           <div className="text-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-sky-100 to-emerald-100 flex items-center justify-center">
               <svg className="w-8 h-8 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -557,6 +592,19 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
             placeholder="在此粘贴 Markdown 格式的题目..."
             className="w-full h-64 p-4 bg-white/80 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 resize-none font-mono text-sm shadow-sm"
           />
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={handleAiParse}
+              disabled={aiLoading || !preview.trim()}
+              className="px-3 py-1.5 bg-violet-500 text-white text-[12px] rounded-lg hover:bg-violet-600 disabled:opacity-50"
+            >
+              {aiLoading ? 'AI 解析中...' : '🧠 AI 解析'}
+            </button>
+            {aiQuestions && (
+              <span className="text-[11px] text-slate-500">AI: {aiQuestions.length} 道题</span>
+            )}
+            {aiError && <span className="text-[11px] text-rose-600">⚠ {aiError}</span>}
+          </div>
         </div>
 
         {error && (
