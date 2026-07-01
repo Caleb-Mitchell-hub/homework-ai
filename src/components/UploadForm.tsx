@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { parseMarkdown, extractTitle } from '@/lib/parser';
 import { sha256Hex } from '@/lib/hash';
 import type { Question as QuestionType } from '@/types';
+import DualPreview, { type DualAiState } from '@/components/DualPreview';
 
 const ALLOWED_ACCEPT = '.md,.txt,.pdf,.docx,.png,.jpg,.jpeg,.webp';
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -60,9 +61,8 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
   const [showManualEditor, setShowManualEditor] = useState(forceManual);
   const [manualQuestions, setManualQuestions] = useState<Question[]>([createEmptyQuestion('single')]);
   const [manualTitle, setManualTitle] = useState('');
-  const [aiQuestions, setAiQuestions] = useState<QuestionType[] | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState('');
+  const [aiState, setAiState] = useState<DualAiState>({ status: 'idle' });
+  const [aiStart, setAiStart] = useState(0);
   const router = useRouter();
   const { token } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,8 +96,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
 
   const handleFile = useCallback(async (file: File) => {
     setError('');
-    setAiQuestions(null);
-    setAiError('');
+    setAiState({ status: 'idle' });
     if (file.size > MAX_BYTES) {
       setError(`文件超过 10MB 限制`);
       return;
@@ -143,13 +142,10 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
     if (selected) handleFile(selected);
   }, [handleFile]);
 
-  const handleAiParse = async () => {
-    if (!preview.trim()) {
-      setAiError('请先上传文件');
-      return;
-    }
-    setAiLoading(true);
-    setAiError('');
+  const fetchAi = async () => {
+    if (!preview.trim()) return;
+    setAiStart(Date.now());
+    setAiState({ status: 'loading', elapsed: 0 });
     try {
       const res = await fetch('/api/ai/parse', {
         method: 'POST',
@@ -161,13 +157,22 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? '解析失败');
-      setAiQuestions(data.questions ?? []);
+      setAiState({ status: 'done', questions: data.questions ?? [] });
     } catch (err: any) {
-      setAiError(String(err?.message ?? err));
-    } finally {
-      setAiLoading(false);
+      setAiState({ status: 'error', message: String(err?.message ?? err) });
     }
   };
+
+  // AI 解析 elapsed 计时器
+  useEffect(() => {
+    if (aiState.status !== 'loading') return;
+    const t = setInterval(() => {
+      setAiState((s) => s.status === 'loading'
+        ? { ...s, elapsed: Math.floor((Date.now() - aiStart) / 1000) }
+        : s);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [aiState.status, aiStart]);
 
   const handleParse = async () => {
     if (!preview.trim()) {
@@ -582,7 +587,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
         >
-          {aiError?.includes('未配置 AI 厂商') && (
+          {aiState.status === 'error' && aiState.message.includes('未配置 AI 厂商') && (
             <div className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg text-[12px] mb-3">
               未配置 AI 厂商,请管理员在「AI 配置」中设置后再使用
             </div>
@@ -628,16 +633,21 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
           />
           <div className="flex items-center gap-2 mt-2">
             <button
-              onClick={handleAiParse}
-              disabled={aiLoading || !preview.trim()}
+              onClick={fetchAi}
+              disabled={aiState.status === 'loading' || !preview.trim()}
               className="px-3 py-1.5 bg-violet-500 text-white text-[12px] rounded-lg hover:bg-violet-600 disabled:opacity-50"
             >
-              {aiLoading ? 'AI 解析中...' : '🧠 AI 解析'}
+              {aiState.status === 'loading' ? 'AI 解析中...' : '🧠 AI 解析'}
             </button>
-            {aiQuestions && (
-              <span className="text-[11px] text-slate-500">AI: {aiQuestions.length} 道题</span>
+            {aiState.status === 'done' && (
+              <span className="text-[11px] text-emerald-600">✓ AI: {aiState.questions.length} 道题</span>
             )}
-            {aiError && <span className="text-[11px] text-rose-600">⚠ {aiError}</span>}
+            {aiState.status === 'error' && (
+              <span className="text-[11px] text-rose-600">⚠ {aiState.message}</span>
+            )}
+            {aiState.status === 'loading' && (
+              <span className="text-[11px] text-slate-400">⏳ {aiState.elapsed}s</span>
+            )}
           </div>
         </div>
 
