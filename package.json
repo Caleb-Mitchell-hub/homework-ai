@@ -34,10 +34,12 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.9",
+    "docx": "^9.7.1",
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "happy-dom": "^20.10.6",
+    "pdfkit": "^0.19.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.9"
