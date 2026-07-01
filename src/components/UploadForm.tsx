@@ -7,6 +7,17 @@ import { parseMarkdown, extractTitle } from '@/lib/parser';
 import { sha256Hex } from '@/lib/hash';
 import type { Question as QuestionType } from '@/types';
 
+const ALLOWED_ACCEPT = '.md,.txt,.pdf,.docx,.png,.jpg,.jpeg,.webp';
+const MAX_BYTES = 10 * 1024 * 1024;
+const ALLOWED_EXT = ['md', 'txt', 'pdf', 'docx', 'png', 'jpg', 'jpeg', 'webp'];
+
+function resolveFileAccept(file: File): 'text' | 'upload' {
+  const ext = file.name.toLowerCase().split('.').pop() ?? '';
+  if (ext === 'md' || ext === 'txt') return 'text';
+  if (ALLOWED_EXT.includes(ext)) return 'upload';
+  return 'text'; // fallback
+}
+
 interface Question {
   type: 'single' | 'multiple' | 'judge' | 'fill' | 'essay' | 'code';
   content: string;
@@ -83,10 +94,16 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
     };
   }
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
-    if (selected) {
-      setError('');
+  const handleFile = useCallback(async (file: File) => {
+    setError('');
+    setAiQuestions(null);
+    setAiError('');
+    if (file.size > MAX_BYTES) {
+      setError(`文件超过 10MB 限制`);
+      return;
+    }
+    const mode = resolveFileAccept(file);
+    if (mode === 'text') {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const result = ev.target?.result as string;
@@ -99,9 +116,32 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
       reader.onerror = () => {
         setError('文件读取失败，请尝试重新选择文件');
       };
-      reader.readAsText(selected);
+      reader.readAsText(file);
+    } else {
+      setIsLoading(true);
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? '上传失败');
+        setPreview(data.text ?? '');
+      } catch (err: any) {
+        setError(String(err?.message ?? err));
+      } finally {
+        setIsLoading(false);
+      }
     }
-  }, []);
+  }, [token]);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (selected) handleFile(selected);
+  }, [handleFile]);
 
   const handleAiParse = async () => {
     if (!preview.trim()) {
@@ -197,21 +237,15 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (file && (file.name.endsWith('.md') || file.name.endsWith('.txt'))) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const result = ev.target?.result as string;
-        if (result) {
-          setPreview(result);
-        } else {
-          setError('文件读取失败');
-        }
-      };
-      reader.readAsText(file);
-    } else {
-      setError('请上传 .md 或 .txt 文件');
+    if (file) {
+      const ext = file.name.toLowerCase().split('.').pop() ?? '';
+      if (ALLOWED_EXT.includes(ext)) {
+        handleFile(file);
+      } else {
+        setError(`不支持的文件类型: .${ext || '未知'}`);
+      }
     }
-  }, []);
+  }, [handleFile]);
 
   const handleClear = () => {
     setPreview('');
@@ -567,7 +601,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".md,.txt"
+                accept={ALLOWED_ACCEPT}
                 onChange={handleFileChange}
                 className="hidden"
               />
