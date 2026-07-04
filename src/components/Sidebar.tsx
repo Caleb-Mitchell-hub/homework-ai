@@ -103,9 +103,10 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  // 点"上传新题库" -> 直接弹系统文件选择器
+  // 点"上传新题库" -> 跳转到 /upload 页面(那里有解析选择对话框)
   const handleSidebarFilePick = () => {
-    sidebarFileInputRef.current?.click();
+    onClose();
+    router.push('/upload');
   };
 
   // 用户在系统选择器里选完文件 -> 读文件 -> 解析 -> 创建 -> 跳答题页
