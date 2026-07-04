@@ -193,6 +193,111 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                     {q.title}
                   </p>
 
+                  {/* 原始选项(单选/多选) */}
+                  {(q.type === 'single' || q.type === 'multiple') &&
+                    Array.isArray((q as any).options) &&
+                    (q as any).options.length > 0 && (
+                      <div>
+                        <div className="text-[10.5px] tracking-[0.2em] uppercase text-slate-400 mb-1.5">
+                          选项
+                        </div>
+                        <ul className="space-y-1.5">
+                          {((q as any).options as string[]).map((opt, idx) => {
+                            // 选项字母 A/B/C/...
+                            const letter = String.fromCharCode(65 + idx);
+                            // 是否为正确答案(参考答案里的字母)
+                            const correctLetters = String(q.answer ?? '')
+                              .toUpperCase()
+                              .split(/[,\s]+/)
+                              .filter(Boolean);
+                            const isCorrectOpt = correctLetters.includes(letter);
+                            // 用户是否选了此项
+                            const userPicked = userAnswer
+                              ? userAnswer
+                                  .toUpperCase()
+                                  .split(/[,\s]+/)
+                                  .filter(Boolean)
+                                  .includes(letter)
+                              : false;
+                            // 视觉样式
+                            let cls = 'bg-slate-50 border-slate-200 text-slate-700';
+                            let badge: React.ReactNode = null;
+                            if (isCorrectOpt && userPicked) {
+                              cls = 'bg-emerald-50 border-emerald-300 text-emerald-800';
+                              badge = (
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[9.5px]">
+                                  ✓ 你选对了
+                                </span>
+                              );
+                            } else if (isCorrectOpt) {
+                              cls = 'bg-emerald-50 border-emerald-300 text-emerald-800';
+                              badge = (
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[9.5px]">
+                                  ✓ 正确答案
+                                </span>
+                              );
+                            } else if (userPicked) {
+                              cls = 'bg-rose-50 border-rose-300 text-rose-800 line-through';
+                              badge = (
+                                <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[9.5px]">
+                                  ✗ 你的错选
+                                </span>
+                              );
+                            }
+                            return (
+                              <li
+                                key={letter}
+                                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-[13px] ${cls}`}
+                              >
+                                <span className="w-5 h-5 rounded-full border border-current/30 flex items-center justify-center text-[11px] font-bold flex-shrink-0">
+                                  {letter}
+                                </span>
+                                <span className="flex-1">{opt}</span>
+                                {badge}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+
+                  {/* 判断题:显示 true/false + 标记 */}
+                  {q.type === 'boolean' && (
+                    <div>
+                      <div className="text-[10.5px] tracking-[0.2em] uppercase text-slate-400 mb-1.5">
+                        判断
+                      </div>
+                      <div className="flex gap-2">
+                        {(['正确', '错误'] as const).map((label, idx) => {
+                          const val = idx === 0 ? 'true' : 'false';
+                          const isCorrectOpt = String(q.answer ?? '').toLowerCase() === val;
+                          const userPicked = userAnswer.toLowerCase() === val;
+                          let cls = 'bg-slate-50 border-slate-200 text-slate-700';
+                          let tag: React.ReactNode = null;
+                          if (isCorrectOpt && userPicked) {
+                            cls = 'bg-emerald-50 border-emerald-300 text-emerald-800';
+                            tag = <span className="text-[10px]">✓ 你选对了</span>;
+                          } else if (isCorrectOpt) {
+                            cls = 'bg-emerald-50 border-emerald-300 text-emerald-800';
+                            tag = <span className="text-[10px]">✓ 正确答案</span>;
+                          } else if (userPicked) {
+                            cls = 'bg-rose-50 border-rose-300 text-rose-800';
+                            tag = <span className="text-[10px]">✗ 你的错选</span>;
+                          }
+                          return (
+                            <div
+                              key={val}
+                              className={`flex-1 px-3 py-2 rounded-lg border text-[13px] flex items-center justify-between ${cls}`}
+                            >
+                              <span>{label}</span>
+                              {tag}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* 你的答案 */}
                   <div>
                     <div className="text-[10.5px] tracking-[0.2em] uppercase text-slate-400 mb-1.5">
