@@ -14,12 +14,60 @@ const typeNames: Record<string, string> = {
 };
 
 /**
+ * 判断用户答案与参考答案是否一致(用于客观题显示 ✓/✗)
+ * - 单选:字符串相等
+ * - 多选:忽略顺序后集合相等
+ * - 判断:布尔/字符串归一比较
+ * - 填空:trim 比较,支持多个空(用 | 分隔)任一匹配
+ * - 简答/代码:不做客观判定(undefined),由老师人工
+ */
+function isCorrect(q: any, userAnswer: string): boolean | undefined {
+  if (!userAnswer) return false;
+  const ref = q.answer ?? '';
+  if (!ref) return undefined;
+  const normalize = (s: string) => String(s).trim().toLowerCase();
+  switch (q.type) {
+    case 'single':
+    case 'boolean': {
+      return normalize(userAnswer) === normalize(ref);
+    }
+    case 'multiple': {
+      // ref 形如 "ABC" 或 "A,B,C",user 形如 "ABC" 或 "A,B,C"
+      const setNorm = (s: string) =>
+        s.split(/[,\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean).sort().join(',');
+      return setNorm(userAnswer) === setNorm(ref);
+    }
+    case 'fill': {
+      // ref 支持 "答案1|答案2" (任一即可),user 单值
+      const refs = String(ref).split('|').map((x) => normalize(x));
+      const u = normalize(userAnswer);
+      return refs.includes(u);
+    }
+    case 'essay':
+    case 'code':
+    default:
+      return undefined; // 主观题不评判
+  }
+}
+
+/** 显示用的正确答案短文本 */
+function formatCorrectAnswer(q: any): string {
+  if (q.type === 'essay') return '见详情';
+  if (q.type === 'code') {
+    const code = q.code ?? q.answer ?? '';
+    const firstLine = String(code).split('\n').find((l) => l.trim()) ?? '';
+    return firstLine.length > 24 ? firstLine.slice(0, 24) + '…' : firstLine;
+  }
+  return String(q.answer ?? '');
+}
+
+/**
  * 提交后的"答案速查"视图
- * - 没有任何批改对错信息、分数、得分率
- * - 每题默认折叠，点开可看：
- *   · 题目内容
- *   · 你的作答
- *   · 参考答案（所有题型都展示，包括 essay / code）
+ * - 每题默认折叠，但题目标题旁直接显示：
+ *   · 题型标签
+ *   · 对错标记（✓ / ✗）
+ *   · 正确答案（点击右侧 ⌄ 可展开详情）
+ * - 点开可看：题目内容 / 你的作答 / 参考答案（高亮 / 纯文本）
  * - 顶部"全部展开 / 全部收起"快捷
  */
 export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: QuizResult }) {
@@ -79,6 +127,9 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
           const codeLang = isCode ? (q as any).language || 'plaintext' : 'plaintext';
           // 真正的"无答案"判断（trim 后为空）
           const hasRef = !!refAnswer && refAnswer.trim().length > 0;
+          // 对错判定(主观题 = undefined)
+          const correct = isCorrect(q, userAnswer);
+          const correctText = formatCorrectAnswer(q);
 
           return (
             <li
@@ -97,7 +148,32 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                 <span className="flex-1 min-w-0 truncate text-[13px] text-slate-700">
                   {q.title}
                 </span>
-                <span className="text-[10px] text-slate-400 tracking-wider uppercase flex-shrink-0">
+                {/* 对错标记 */}
+                {correct === true && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-[10px] font-medium flex-shrink-0">
+                    ✓ 正确
+                  </span>
+                )}
+                {correct === false && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 text-[10px] font-medium flex-shrink-0">
+                    ✗ 错误
+                  </span>
+                )}
+                {correct === undefined && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10px] flex-shrink-0">
+                    主观
+                  </span>
+                )}
+                {/* 正确答案(短文本) */}
+                {hasRef && correctText && (
+                  <span
+                    className="hidden sm:inline-block max-w-[140px] truncate text-[11px] text-slate-500 font-mono px-2 py-0.5 bg-slate-50 border border-slate-200 rounded flex-shrink-0"
+                    title={correctText}
+                  >
+                    答: {correctText}
+                  </span>
+                )}
+                <span className="text-[10px] text-slate-400 tracking-wider uppercase flex-shrink-0 hidden md:inline">
                   {typeNames[q.type] || q.type}
                 </span>
                 <span
