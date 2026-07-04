@@ -50,7 +50,19 @@ export async function aiParseQuestions(opts: {
         signal: opts.signal,
       });
       const json = stripCodeFence(content);
-      const arr = JSON.parse(json);
+      // 容错:若 JSON.parse 失败,尝试用简单启发式修复(移除尾部不完整内容)
+      let arr: unknown;
+      try {
+        arr = JSON.parse(json);
+      } catch (parseErr) {
+        // 启发式:找到最后一个完整的数组项边界 '},' 或 '}]'
+        const fixed = tryRepairTruncatedJson(json);
+        if (fixed) {
+          arr = JSON.parse(fixed);
+        } else {
+          throw parseErr;
+        }
+      }
       if (!Array.isArray(arr)) throw new Error('AI 返回不是数组');
       return normalizeAIOutputToQuestions(arr, genId);
     } catch (err) {
@@ -59,4 +71,31 @@ export async function aiParseQuestions(opts: {
     }
   }
   throw new Error(`AI 解析失败(已重试 ${RETRYABLE} 次): ${(lastErr as Error).message}`);
+}
+
+/**
+ * 容错修复:AI 输出 JSON 可能在末尾被截断(达到 token 上限)。
+ * 尝试找到最后一个 '}' 之前的位置截断,并补上 ']'
+ * 返回修复后的字符串,失败返回 null
+ */
+function tryRepairTruncatedJson(s: string): string | null {
+  // 找到数组起始 [
+  const start = s.indexOf('[');
+  if (start < 0) return null;
+  // 从后往前找 }, 或 },  或 }]
+  for (let i = s.length - 1; i > start; i--) {
+    if (s[i] === '}') {
+      // 检查这是不是一个完整的对象结束
+      const candidate = s.slice(start, i + 1) + ']';
+      try {
+        const arr = JSON.parse(candidate);
+        if (Array.isArray(arr) && arr.length > 0) {
+          return candidate;
+        }
+      } catch {
+        // 继续往前找
+      }
+    }
+  }
+  return null;
 }
