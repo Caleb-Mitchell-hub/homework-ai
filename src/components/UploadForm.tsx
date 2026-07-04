@@ -3,10 +3,11 @@
 import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { parseMarkdown, extractTitle } from '@/lib/parser';
+import { extractTitle } from '@/lib/parser';
 import { sha256Hex } from '@/lib/hash';
 import type { Question as QuestionType } from '@/types';
-import DualPreview, { type DualAiState } from '@/components/DualPreview';
+import ParseChoiceDialog from '@/components/ParseChoiceDialog';
+import ParseProgressDialog from '@/components/ParseProgressDialog';
 
 const ALLOWED_ACCEPT = '.md,.txt,.pdf,.docx,.png,.jpg,.jpeg,.webp';
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -61,8 +62,10 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
   const [showManualEditor, setShowManualEditor] = useState(forceManual);
   const [manualQuestions, setManualQuestions] = useState<Question[]>([createEmptyQuestion('single')]);
   const [manualTitle, setManualTitle] = useState('');
-  const [aiState, setAiState] = useState<DualAiState>({ status: 'idle' });
-  const [aiStart, setAiStart] = useState(0);
+  const [showChoice, setShowChoice] = useState(false);
+  const [showProgress, setShowProgress] = useState(false);
+  const [parseMode, setParseMode] = useState<'local' | 'ai'>('local');
+  const [aiAvailable, setAiAvailable] = useState(false);
   const router = useRouter();
   const { token } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +86,14 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
     },
   }));
 
+  // AI 可用性探测
+  useEffect(() => {
+    fetch('/api/ai/available')
+      .then((r) => r.json())
+      .then((d) => setAiAvailable(!!d.available))
+      .catch(() => setAiAvailable(false));
+  }, []);
+
   function createEmptyQuestion(type: Question['type']): Question {
     return {
       type,
@@ -96,7 +107,6 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
 
   const handleFile = useCallback(async (file: File) => {
     setError('');
-    setAiState({ status: 'idle' });
     if (file.size > MAX_BYTES) {
       setError(`文件超过 10MB 限制`);
       return;
@@ -108,6 +118,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
         const result = ev.target?.result as string;
         if (result) {
           setPreview(result);
+          setShowChoice(true);
         } else {
           setError('文件读取失败，请尝试重新选择文件');
         }
@@ -129,6 +140,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? '上传失败');
         setPreview(data.text ?? '');
+        setShowChoice(true);
       } catch (err: any) {
         setError(String(err?.message ?? err));
       } finally {
@@ -142,82 +154,33 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
     if (selected) handleFile(selected);
   }, [handleFile]);
 
-  const fetchAi = async () => {
-    if (!preview.trim()) return;
-    setAiStart(Date.now());
-    setAiState({ status: 'loading', elapsed: 0 });
-    try {
-      const res = await fetch('/api/ai/parse', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ text: preview }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? '解析失败');
-      setAiState({ status: 'done', questions: data.questions ?? [] });
-    } catch (err: any) {
-      setAiState({ status: 'error', message: String(err?.message ?? err) });
-    }
+  const handleParseChoice = (mode: 'local' | 'ai') => {
+    setParseMode(mode);
+    setShowChoice(false);
+    setShowProgress(true);
   };
 
-  // AI 解析 elapsed 计时器
-  useEffect(() => {
-    if (aiState.status !== 'loading') return;
-    const t = setInterval(() => {
-      setAiState((s) => s.status === 'loading'
-        ? { ...s, elapsed: Math.floor((Date.now() - aiStart) / 1000) }
-        : s);
-    }, 1000);
-    return () => clearInterval(t);
-  }, [aiState.status, aiStart]);
-
-  const handleParse = async () => {
-    if (!preview.trim()) {
-      setError('请先选择文件或粘贴内容');
-      return;
-    }
-
+  const handleParseComplete = async (questions: unknown[]) => {
+    setShowProgress(false);
+    const qs = questions as Array<{ type: string; content: string; answer: string; score?: number; options?: string[]; analysis?: string }>;
     if (!token) {
       setError('请先登录');
       return;
     }
-
-    setIsLoading(true);
-    setError('');
-
     try {
-      const questions = parseMarkdown(preview);
-      if (questions.length === 0) {
-        setError('未能解析到任何题目，请检查文件格式是否正确');
-        setIsLoading(false);
-        return;
-      }
-
       const title = extractTitle(preview);
       const fileKey = await sha256Hex(preview);
-
       const res = await fetch('/api/quizzes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ title, questions, fileKey }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title, questions: qs, fileKey }),
       });
-
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || '创建题目失败');
-        setIsLoading(false);
+        setError(data.error ?? '创建题库失败');
         return;
       }
-
-      // 同 fileKey 已存在 → 弹选择层
       if (data.existed) {
-        setIsLoading(false);
         setReuploadChoice({
           quizId: data.quiz.id,
           draftId: data.draftId ?? null,
@@ -225,18 +188,16 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
         });
         return;
       }
-
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (onCreated) {
-        onCreated(data.quiz.id);
-      } else {
-        router.push(`/quiz/${data.quiz.id}`);
-      }
+      if (onCreated) onCreated(data.quiz.id);
+      else router.push(`/quiz/${data.quiz.id}`);
     } catch (err) {
-      console.error('Parse error:', err);
-      setError('解析失败：' + (err as Error).message);
-      setIsLoading(false);
+      setError('网络错误: ' + (err as Error).message);
     }
+  };
+
+  const handleParseError = (err: string) => {
+    setShowProgress(false);
+    setError('解析失败: ' + err);
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -587,11 +548,6 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
         >
-          {aiState.status === 'error' && aiState.message.includes('未配置 AI 厂商') && (
-            <div className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg text-[12px] mb-3">
-              未配置 AI 厂商,请管理员在「AI 配置」中设置后再使用
-            </div>
-          )}
           <div className="text-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-sky-100 to-emerald-100 flex items-center justify-center">
               <svg className="w-8 h-8 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -631,24 +587,6 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
             placeholder="在此粘贴 Markdown 格式的题目..."
             className="w-full h-64 p-4 bg-white/80 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 resize-none font-mono text-sm shadow-sm"
           />
-          <div className="flex items-center gap-2 mt-2">
-            <button
-              onClick={fetchAi}
-              disabled={aiState.status === 'loading' || !preview.trim()}
-              className="px-3 py-1.5 bg-violet-500 text-white text-[12px] rounded-lg hover:bg-violet-600 disabled:opacity-50"
-            >
-              {aiState.status === 'loading' ? 'AI 解析中...' : '🧠 AI 解析'}
-            </button>
-            {aiState.status === 'done' && (
-              <span className="text-[11px] text-emerald-600">✓ AI: {aiState.questions.length} 道题</span>
-            )}
-            {aiState.status === 'error' && (
-              <span className="text-[11px] text-rose-600">⚠ {aiState.message}</span>
-            )}
-            {aiState.status === 'loading' && (
-              <span className="text-[11px] text-slate-400">⏳ {aiState.elapsed}s</span>
-            )}
-          </div>
         </div>
 
         {error && (
@@ -669,21 +607,11 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
             清空
           </button>
           <button
-            onClick={handleParse}
+            onClick={() => preview.trim() && setShowChoice(true)}
             disabled={!preview.trim() || isLoading}
             className="flex-1 py-4 bg-gradient-to-r from-sky-400 to-emerald-400 text-white rounded-xl hover:from-sky-500 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-sky-200 flex items-center justify-center gap-2"
           >
-            {isLoading ? (
-              <>
-                <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                解析中...
-              </>
-            ) : (
-              '开始答题'
-            )}
+            开始解析
           </button>
         </div>
 
@@ -702,6 +630,27 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
           </div>
         </div>
       </div>
+
+      {showChoice && (
+        <ParseChoiceDialog
+          open={showChoice}
+          onClose={() => setShowChoice(false)}
+          onSelect={handleParseChoice}
+          aiAvailable={aiAvailable}
+        />
+      )}
+
+      {showProgress && (
+        <ParseProgressDialog
+          open={showProgress}
+          mode={parseMode}
+          text={preview}
+          token={token}
+          onComplete={handleParseComplete}
+          onError={handleParseError}
+          onCancel={() => setShowProgress(false)}
+        />
+      )}
 
       {reuploadChoice && (
         <div
