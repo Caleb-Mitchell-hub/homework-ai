@@ -4,6 +4,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     aIProviderConfig: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
   },
 }));
@@ -32,6 +33,7 @@ import { parseMarkdown } from '@/lib/parser';
 import { aiParseQuestions } from '@/lib/ai/parser';
 import { getSession } from '@/lib/sessionStore';
 import { verifyAdminToken, getTokenFromHeaders } from '@/lib/admin-auth';
+import { aiRateLimiter } from '@/lib/ai/rate-limit';
 import { POST } from '@/app/api/ai/parse-stream/route';
 
 async function readSseEvents(res: Response): Promise<any[]> {
@@ -64,16 +66,17 @@ function makeAuthedReq(body: any) {
 describe('POST /api/ai/parse-stream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (getTokenFromHeaders as any).mockImplementation((req: Request) => {
+    vi.mocked(getTokenFromHeaders).mockImplementation((req: Request) => {
       const h = req.headers.get('authorization');
       return h ? h.replace('Bearer ', '') : null;
     });
-    (verifyAdminToken as any).mockReturnValue(null);
-    (getSession as any).mockReturnValue({ userId: 'u1', type: 'user' });
+    vi.mocked(verifyAdminToken).mockReturnValue(null);
+    vi.mocked(getSession).mockReturnValue({ userId: 'u1', type: 'user' });
+    vi.mocked(aiRateLimiter.check).mockReturnValue(true);
   });
 
   it('returns 401 when no auth header', async () => {
-    (getTokenFromHeaders as any).mockReturnValueOnce(null);
+    vi.mocked(getTokenFromHeaders).mockReturnValueOnce(null);
     const req = new Request('http://localhost/api/ai/parse-stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -83,10 +86,21 @@ describe('POST /api/ai/parse-stream', () => {
     expect(res.status).toBe(401);
   });
 
+  it('returns 429 when rate-limit returns false', async () => {
+    vi.mocked(aiRateLimiter.check).mockReturnValueOnce(false);
+    const res = await POST(makeAuthedReq({ text: '# hello', mode: 'local' }) as any);
+    expect(res.status).toBe(429);
+  });
+
+  it('returns 400 on empty text', async () => {
+    const res = await POST(makeAuthedReq({ text: '   ', mode: 'local' }) as any);
+    expect(res.status).toBe(400);
+  });
+
   it('streams local parse progress events', async () => {
-    (parseMarkdown as any).mockReturnValue([
+    vi.mocked(parseMarkdown).mockReturnValue([
       { type: 'single', content: 'q1', answer: 'A', score: 10 },
-    ]);
+    ] as any);
 
     const res = await POST(makeAuthedReq({ text: '# hello', mode: 'local' }) as any);
     expect(res.headers.get('Content-Type')).toBe('text/event-stream');
@@ -100,8 +114,18 @@ describe('POST /api/ai/parse-stream', () => {
     expect(last.questions).toHaveLength(1);
   });
 
+  it('emits warning event when local text exceeds MAX_TEXT_CHARS', async () => {
+    vi.mocked(parseMarkdown).mockReturnValue([
+      { type: 'single', content: 'q1', answer: 'A', score: 10 },
+    ] as any);
+    const longText = 'x'.repeat(60_001);
+    const res = await POST(makeAuthedReq({ text: longText, mode: 'local' }) as any);
+    const events = await readSseEvents(res);
+    expect(events.some((e) => e.warning)).toBe(true);
+  });
+
   it('returns error event when no active AI provider for mode=ai', async () => {
-    (prisma.aIProviderConfig.findFirst as any).mockResolvedValue(null);
+    vi.mocked(prisma.aIProviderConfig.findFirst).mockResolvedValue(null as any);
 
     const res = await POST(makeAuthedReq({ text: '# hello', mode: 'ai' }) as any);
     const events = await readSseEvents(res);
@@ -109,17 +133,47 @@ describe('POST /api/ai/parse-stream', () => {
   });
 
   it('streams AI parse progress events', async () => {
-    (prisma.aIProviderConfig.findFirst as any).mockResolvedValue({
+    vi.mocked(prisma.aIProviderConfig.findFirst).mockResolvedValue({
       id: 'p1', baseURL: 'https://x', apiKeyCipher: 'c', model: 'm',
-    });
-    (aiParseQuestions as any).mockResolvedValue([
+    } as any);
+    vi.mocked(aiParseQuestions).mockResolvedValue([
       { type: 'single', content: 'q1', answer: 'A' },
-    ]);
+    ] as any);
 
     const res = await POST(makeAuthedReq({ text: '# hello', mode: 'ai' }) as any);
     const events = await readSseEvents(res);
     const last = events[events.length - 1];
     expect(last.progress).toBe(100);
     expect(last.questions).toHaveLength(1);
+  });
+
+  it('uses providerId when provided for mode=ai', async () => {
+    vi.mocked(prisma.aIProviderConfig.findUnique).mockResolvedValue({
+      id: 'pX', baseURL: 'https://y', apiKeyCipher: 'c', model: 'm',
+    } as any);
+    vi.mocked(aiParseQuestions).mockResolvedValue([
+      { type: 'single', content: 'q1', answer: 'A' },
+    ] as any);
+
+    const res = await POST(makeAuthedReq({ text: '# hello', mode: 'ai', providerId: 'pX' }) as any);
+    const events = await readSseEvents(res);
+    expect(vi.mocked(prisma.aIProviderConfig.findUnique)).toHaveBeenCalledWith({ where: { id: 'pX' } });
+    expect(vi.mocked(prisma.aIProviderConfig.findFirst)).not.toHaveBeenCalled();
+    expect(events[events.length - 1].progress).toBe(100);
+  });
+
+  it('caps error message length to 200 chars in SSE error event', async () => {
+    vi.mocked(prisma.aIProviderConfig.findFirst).mockResolvedValue({
+      id: 'p1', baseURL: 'https://x', apiKeyCipher: 'c', model: 'm',
+    } as any);
+    const longMsg = 'a'.repeat(500);
+    vi.mocked(aiParseQuestions).mockRejectedValueOnce(new Error(longMsg));
+
+    const res = await POST(makeAuthedReq({ text: '# hello', mode: 'ai' }) as any);
+    const events = await readSseEvents(res);
+    const errEvent = events.find((e) => e.error);
+    expect(errEvent).toBeTruthy();
+    // 6 (前缀 "解析失败: ") + 200 chars
+    expect(errEvent!.error.length).toBe(6 + 200);
   });
 });
