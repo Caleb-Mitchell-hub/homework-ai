@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface Props {
   open: boolean;
@@ -10,19 +10,31 @@ interface Props {
 }
 
 export default function ParseChoiceDialog({ open, onClose, onSelect, aiAvailable }: Props) {
+  const localButtonRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     if (!open) return;
     const h = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    // focus the local card so keyboard users can confirm quickly
+    localButtonRef.current?.focus();
+    return () => {
+      window.removeEventListener('keydown', h);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [open, onClose]);
 
   if (!open) return null;
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="parse-choice-title"
       className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={onClose}
     >
@@ -30,11 +42,12 @@ export default function ParseChoiceDialog({ open, onClose, onSelect, aiAvailable
         className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold text-slate-800 mb-1">选择解析方式</h2>
+        <h2 id="parse-choice-title" className="text-lg font-semibold text-slate-800 mb-1">选择解析方式</h2>
         <p className="text-[12px] text-slate-500 mb-5">选完后会自动开始解析并进入答题</p>
 
         <div className="grid grid-cols-2 gap-3">
           <button
+            ref={localButtonRef}
             onClick={() => onSelect('local')}
             className="p-5 bg-gradient-to-br from-sky-50 to-emerald-50 border-2 border-sky-200 hover:border-sky-400 rounded-xl text-left transition-all"
           >
