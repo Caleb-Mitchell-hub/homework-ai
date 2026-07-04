@@ -21,7 +21,7 @@ export async function POST(
 
   try {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 5000);
+    const timer = setTimeout(() => ctl.abort(), 60_000); // 60s
     await callChat({
       baseURL: provider.baseURL,
       apiKey,
@@ -37,10 +37,11 @@ export async function POST(
       model: provider.model,
     });
   } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({
       ok: false,
       latencyMs: Date.now() - start,
-      error: String(err?.message ?? err).slice(0, 200),
+      error: msg.slice(0, 200),
     }, { status: 502 });
   }
 }

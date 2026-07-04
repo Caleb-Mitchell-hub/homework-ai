@@ -103,11 +103,6 @@ export async function* callChatStream(opts: CallChatOpts): AsyncGenerator<Stream
       if (signal.aborted) return;
       const { done, value } = await reader.read();
       if (done) {
-        // 处理 buffer 末尾
-        if (buf.trim()) {
-          const tail = parseSseLine(buf);
-          if (tail) yield tail;
-        }
         yield { delta: '', done: true };
         return;
       }
