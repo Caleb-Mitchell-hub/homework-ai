@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { extractTitle } from '@/lib/parser';
 import { sha256Hex } from '@/lib/hash';
-import type { Question as QuestionType } from '@/types';
 import ParseChoiceDialog from '@/components/ParseChoiceDialog';
 import ParseProgressDialog from '@/components/ParseProgressDialog';
 
@@ -66,6 +65,8 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
   const [showProgress, setShowProgress] = useState(false);
   const [parseMode, setParseMode] = useState<'local' | 'ai'>('local');
   const [aiAvailable, setAiAvailable] = useState(false);
+  const [aiAvailableResolved, setAiAvailableResolved] = useState(false);
+  const [pendingChoiceOpen, setPendingChoiceOpen] = useState(false);
   const router = useRouter();
   const { token } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -90,9 +91,17 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
   useEffect(() => {
     fetch('/api/ai/available')
       .then((r) => r.json())
-      .then((d) => setAiAvailable(!!d.available))
-      .catch(() => setAiAvailable(false));
+      .then((d) => { setAiAvailable(!!d.available); setAiAvailableResolved(true); })
+      .catch(() => { setAiAvailable(false); setAiAvailableResolved(true); });
   }, []);
+
+  // 探测完成后,若期间收到"打开选择对话框"的请求,立即打开
+  useEffect(() => {
+    if (pendingChoiceOpen && aiAvailableResolved) {
+      setShowChoice(true);
+      setPendingChoiceOpen(false);
+    }
+  }, [pendingChoiceOpen, aiAvailableResolved]);
 
   function createEmptyQuestion(type: Question['type']): Question {
     return {
@@ -118,7 +127,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
         const result = ev.target?.result as string;
         if (result) {
           setPreview(result);
-          setShowChoice(true);
+          setPendingChoiceOpen(true);
         } else {
           setError('文件读取失败，请尝试重新选择文件');
         }
@@ -140,9 +149,9 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? '上传失败');
         setPreview(data.text ?? '');
-        setShowChoice(true);
-      } catch (err: any) {
-        setError(String(err?.message ?? err));
+        setPendingChoiceOpen(true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
         setIsLoading(false);
       }
@@ -167,6 +176,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
       setError('请先登录');
       return;
     }
+    setIsLoading(true);
     try {
       const title = extractTitle(preview);
       const fileKey = await sha256Hex(preview);
@@ -191,7 +201,9 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
       if (onCreated) onCreated(data.quiz.id);
       else router.push(`/quiz/${data.quiz.id}`);
     } catch (err) {
-      setError('网络错误: ' + (err as Error).message);
+      setError('网络错误: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -607,7 +619,11 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
             清空
           </button>
           <button
-            onClick={() => preview.trim() && setShowChoice(true)}
+            onClick={() => {
+              if (!preview.trim()) return;
+              setError('');
+              setPendingChoiceOpen(true);
+            }}
             disabled={!preview.trim() || isLoading}
             className="flex-1 py-4 bg-gradient-to-r from-sky-400 to-emerald-400 text-white rounded-xl hover:from-sky-500 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-sky-200 flex items-center justify-center gap-2"
           >
@@ -705,6 +721,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
                 onClick={() => setReuploadChoice(null)}
                 className="w-full py-2.5 text-[13px] text-slate-500 hover:text-slate-700 transition-colors"
               >
+                {/* 设计选择:取消时保留 preview,允许用户重新点击"开始解析"以再次进入选择层 */}
                 取消
               </button>
             </div>
