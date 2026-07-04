@@ -77,22 +77,25 @@ function lineChartOption(dates: string[], series: { name: string; data: number[]
       itemHeight: 10,
       itemGap: 16,
     },
-    grid: { left: 8, right: 16, top: 12, bottom: 32 },
+    grid: { left: 48, right: 24, top: 20, bottom: 48, containLabel: false },
     xAxis: {
       type: 'category',
       data: dates,
       axisLine: { lineStyle: { color: '#e2e8f0' } },
       axisTick: { show: false },
+      boundaryGap: false,
       axisLabel: {
         ...CHART_TEXT_STYLE,
         rotate: dates.length > 14 ? 45 : 0,
+        interval: dates.length > 14 ? Math.ceil(dates.length / 7) : 'auto',
         formatter: (v: string) => v.slice(5), // MM-DD
       },
     },
     yAxis: {
       type: 'value',
+      minInterval: 1,
       splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
-      axisLabel: CHART_TEXT_STYLE,
+      axisLabel: { ...CHART_TEXT_STYLE, margin: 8 },
     },
     series: series.map((s) => ({
       name: s.name,
@@ -100,15 +103,15 @@ function lineChartOption(dates: string[], series: { name: string; data: number[]
       data: s.data,
       smooth: true,
       symbol: 'circle',
-      symbolSize: 3,
-      lineStyle: { color: s.color, width: 2 },
+      symbolSize: 4,
+      lineStyle: { color: s.color, width: 2.5 },
       itemStyle: { color: s.color },
       areaStyle: {
         color: {
           type: 'linear',
           x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: s.color + '20' },
+            { offset: 0, color: s.color + '25' },
             { offset: 1, color: s.color + '02' },
           ],
         },
@@ -235,8 +238,11 @@ export default function AdminDashboard() {
       legend: {
         bottom: 0,
         textStyle: { color: '#94a3b8', fontSize: 11 },
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 20,
       },
-      grid: { left: 8, right: 16, top: 12, bottom: 32 },
+      grid: { left: 48, right: 24, top: 30, bottom: 48 },
       xAxis: {
         type: 'category',
         data: ['用户', '题库', '答题'],
@@ -246,16 +252,18 @@ export default function AdminDashboard() {
       },
       yAxis: {
         type: 'value',
+        minInterval: 1,
         splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
-        axisLabel: CHART_TEXT_STYLE,
+        axisLabel: { ...CHART_TEXT_STYLE, margin: 8 },
       },
       series: [
         {
           name: '上月',
           type: 'bar',
+          barGap: '30%',
           data: [m.previousMonth.users, m.previousMonth.quizzes, m.previousMonth.results],
           itemStyle: { color: '#cbd5e1', borderRadius: [4, 4, 0, 0] },
-          barWidth: 28,
+          barWidth: 32,
         },
         {
           name: '本月',
@@ -271,12 +279,14 @@ export default function AdminDashboard() {
             },
             borderRadius: [4, 4, 0, 0],
           },
-          barWidth: 28,
+          barWidth: 32,
           label: {
             show: true,
             position: 'top',
-            fontSize: 10,
+            distance: 6,
+            fontSize: 11,
             color: '#6366f1',
+            fontWeight: 600,
             formatter: (p: { value: number }) => (p.value > 0 ? p.value : ''),
           },
         },
@@ -297,17 +307,20 @@ export default function AdminDashboard() {
       },
       legend: {
         orient: 'vertical',
-        right: 8,
+        right: 4,
         top: 'center',
-        textStyle: { color: '#94a3b8', fontSize: 10 },
+        itemGap: 8,
+        textStyle: { color: '#94a3b8', fontSize: 11 },
         itemWidth: 8,
         itemHeight: 8,
+        pageIconSize: 8,
+        pageTextStyle: { color: '#94a3b8', fontSize: 10 },
       },
       series: [
         {
           type: 'pie',
-          radius: ['50%', '78%'],
-          center: ['38%', '52%'],
+          radius: ['45%', '72%'],
+          center: ['35%', '50%'],
           emphasis: { label: { fontSize: 14, fontWeight: 'bold' } },
           label: { show: false },
           data: list.map((o) => ({ name: o.name, value: o.count })),
@@ -333,16 +346,17 @@ export default function AdminDashboard() {
         formatter: '{b}: {c} ({d}%)',
       },
       legend: {
-        bottom: 0,
+        bottom: 4,
         textStyle: { color: '#94a3b8', fontSize: 11 },
         itemWidth: 10,
         itemHeight: 10,
+        itemGap: 20,
       },
       series: [
         {
           type: 'pie',
-          radius: ['55%', '80%'],
-          center: ['50%', '46%'],
+          radius: ['50%', '75%'],
+          center: ['50%', '43%'],
           emphasis: { label: { fontSize: 14, fontWeight: 'bold' } },
           label: { show: false },
           data: [
@@ -370,34 +384,39 @@ export default function AdminDashboard() {
       legend: {
         bottom: 0,
         textStyle: { color: '#94a3b8', fontSize: 11 },
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 20,
       },
-      grid: { left: 8, right: 16, top: 12, bottom: 32 },
+      grid: { left: 48, right: 24, top: 20, bottom: 48 },
       xAxis: {
         type: 'category',
         data: list.map((p) => p.name),
         axisLine: { lineStyle: { color: '#e2e8f0' } },
         axisTick: { show: false },
-        axisLabel: { ...CHART_TEXT_STYLE, rotate: list.length > 6 ? 30 : 0 },
+        axisLabel: { ...CHART_TEXT_STYLE, rotate: list.length > 6 ? 30 : 0, interval: 0 },
       },
       yAxis: {
         type: 'value',
+        minInterval: 1,
         splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
-        axisLabel: CHART_TEXT_STYLE,
+        axisLabel: { ...CHART_TEXT_STYLE, margin: 8 },
       },
       series: [
         {
           name: '用户数',
           type: 'bar',
+          barGap: '20%',
           data: list.map((p) => p.userCount),
           itemStyle: { color: '#818cf8', borderRadius: [4, 4, 0, 0] },
-          barWidth: 20,
+          barWidth: 22,
         },
         {
           name: '指派题库',
           type: 'bar',
           data: list.map((p) => p.assignmentCount),
           itemStyle: { color: '#34d399', borderRadius: [4, 4, 0, 0] },
-          barWidth: 20,
+          barWidth: 22,
         },
       ],
     };
@@ -530,11 +549,11 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <div className="bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-2xl p-5 shadow-sm">
                   <h3 className="text-[14px] font-semibold text-slate-700 mb-3">📈 用户增长趋势（近 30 天）</h3>
-                  <ReactECharts option={userTrendOption} style={{ height: 260 }} notMerge />
+                  <ReactECharts option={userTrendOption} style={{ height: 300 }} notMerge />
                 </div>
                 <div className="bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-2xl p-5 shadow-sm">
                   <h3 className="text-[14px] font-semibold text-slate-700 mb-3">📊 题库 & 答题趋势（近 30 天）</h3>
-                  <ReactECharts option={combinedTrendOption} style={{ height: 260 }} notMerge />
+                  <ReactECharts option={combinedTrendOption} style={{ height: 300 }} notMerge />
                 </div>
               </div>
 
@@ -552,7 +571,7 @@ export default function AdminDashboard() {
                     );
                   })}
                 </div>
-                <ReactECharts option={momBarOption} style={{ height: 220 }} notMerge />
+                <ReactECharts option={momBarOption} style={{ height: 260 }} notMerge />
               </div>
 
               {/* ── 第五行：分布图 ── */}
@@ -561,7 +580,7 @@ export default function AdminDashboard() {
                 <div className="bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-2xl p-5 shadow-sm">
                   <h3 className="text-[14px] font-semibold text-slate-700 mb-3">👔 职业分布</h3>
                   {stats.occupations.length > 0 ? (
-                    <ReactECharts option={occupationPieOption} style={{ height: 260 }} notMerge />
+                    <ReactECharts option={occupationPieOption} style={{ height: 280 }} notMerge />
                   ) : (
                     <div className="flex items-center justify-center h-[260px] text-slate-400 text-sm">
                       暂无职业数据
@@ -572,7 +591,7 @@ export default function AdminDashboard() {
                 {/* 权限分布 */}
                 <div className="bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-2xl p-5 shadow-sm">
                   <h3 className="text-[14px] font-semibold text-slate-700 mb-3">🔑 权限分布</h3>
-                  <ReactECharts option={permDonutOption} style={{ height: 260 }} notMerge />
+                  <ReactECharts option={permDonutOption} style={{ height: 280 }} notMerge />
                 </div>
               </div>
 
@@ -580,7 +599,7 @@ export default function AdminDashboard() {
               {stats.professions.length > 0 && (
                 <div className="bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-2xl p-5 shadow-sm">
                   <h3 className="text-[14px] font-semibold text-slate-700 mb-3">🏢 专业指派统计</h3>
-                  <ReactECharts option={professionBarOption} style={{ height: 260 }} notMerge />
+                  <ReactECharts option={professionBarOption} style={{ height: 300 }} notMerge />
                 </div>
               )}
             </>

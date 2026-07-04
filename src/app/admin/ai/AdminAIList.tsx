@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import AiProviderModal from '@/components/admin/AiProviderModal';
 
 interface Provider {
@@ -18,7 +18,7 @@ interface Provider {
 }
 
 export default function AdminAIList() {
-  const { token } = useAuth();
+  const { token } = useAdminAuth();
   const [list, setList] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Provider | null>(null);

@@ -13,6 +13,7 @@ vi.mock('@/lib/parser', () => ({
 }));
 vi.mock('@/lib/ai/parser', () => ({
   aiParseQuestions: vi.fn(),
+  aiParseQuestionsStream: vi.fn(),
 }));
 vi.mock('@/lib/ai/normalize', () => ({
   normalizeAIOutputToQuestions: vi.fn((arr) => arr),
@@ -30,11 +31,18 @@ vi.mock('@/lib/ai/rate-limit', () => ({
 
 import { prisma } from '@/lib/prisma';
 import { parseMarkdown } from '@/lib/parser';
-import { aiParseQuestions } from '@/lib/ai/parser';
+import { aiParseQuestions, aiParseQuestionsStream } from '@/lib/ai/parser';
 import { getSession } from '@/lib/sessionStore';
 import { verifyAdminToken, getTokenFromHeaders } from '@/lib/admin-auth';
 import { aiRateLimiter } from '@/lib/ai/rate-limit';
 import { POST } from '@/app/api/ai/parse-stream/route';
+
+/** 构造 aiParseQuestionsStream 的 AsyncIterable mock 返回 */
+function mockStream(events: Array<{ type: string; [k: string]: any }>) {
+  return async function* () {
+    for (const e of events) yield e as any;
+  };
+}
 
 async function readSseEvents(res: Response): Promise<any[]> {
   const reader = res.body!.getReader();
@@ -136,9 +144,12 @@ describe('POST /api/ai/parse-stream', () => {
     vi.mocked(prisma.aIProviderConfig.findFirst).mockResolvedValue({
       id: 'p1', baseURL: 'https://x', apiKeyCipher: 'c', model: 'm',
     } as any);
-    vi.mocked(aiParseQuestions).mockResolvedValue([
-      { type: 'single', content: 'q1', answer: 'A' },
-    ] as any);
+    vi.mocked(aiParseQuestionsStream).mockImplementation(mockStream([
+      { type: 'progress', data: { progress: 30, message: '调用 AI 厂商...', receivedChars: 0 } },
+      { type: 'progress', data: { progress: 60, message: 'AI 输出中', receivedChars: 100 } },
+      { type: 'progress', data: { progress: 90, message: '规范化题目...', receivedChars: 200 } },
+      { type: 'complete', questions: [{ type: 'single', content: 'q1', answer: 'A' }] },
+    ]) as any);
 
     const res = await POST(makeAuthedReq({ text: '# hello', mode: 'ai' }) as any);
     const events = await readSseEvents(res);
@@ -151,9 +162,9 @@ describe('POST /api/ai/parse-stream', () => {
     vi.mocked(prisma.aIProviderConfig.findUnique).mockResolvedValue({
       id: 'pX', baseURL: 'https://y', apiKeyCipher: 'c', model: 'm',
     } as any);
-    vi.mocked(aiParseQuestions).mockResolvedValue([
-      { type: 'single', content: 'q1', answer: 'A' },
-    ] as any);
+    vi.mocked(aiParseQuestionsStream).mockImplementation(mockStream([
+      { type: 'complete', questions: [{ type: 'single', content: 'q1', answer: 'A' }] },
+    ]) as any);
 
     const res = await POST(makeAuthedReq({ text: '# hello', mode: 'ai', providerId: 'pX' }) as any);
     const events = await readSseEvents(res);
@@ -167,7 +178,10 @@ describe('POST /api/ai/parse-stream', () => {
       id: 'p1', baseURL: 'https://x', apiKeyCipher: 'c', model: 'm',
     } as any);
     const longMsg = 'a'.repeat(500);
-    vi.mocked(aiParseQuestions).mockRejectedValueOnce(new Error(longMsg));
+    // 流式 mock 直接 yield 一个 error 事件(模拟 parser 上游报错)
+    vi.mocked(aiParseQuestionsStream).mockImplementation(async function* () {
+      yield { type: 'error', error: `解析失败: ${longMsg.slice(0, 200)}` };
+    } as any);
 
     const res = await POST(makeAuthedReq({ text: '# hello', mode: 'ai' }) as any);
     const events = await readSseEvents(res);

@@ -1,0 +1,23 @@
+name: 在线答题系统
+type: exe
+description: |
+  基于 Next.js 的在线答题系统，支持 Markdown 题库导入、
+  官方/个人题库、职业维度筛选、答题结果统计。
+entry: start-prod.ps1
+workdir: .
+ports:
+  - number: 3000
+    protocol: tcp
+    listen_addr: 0.0.0.0
+    note: HTTP 主服务
+urls:
+  - name: Web 界面（本地）
+    url: http://localhost:3000
+  - name: Web 界面（局域网）
+    url: http://192.168.36.242:3000
+  - name: Web 界面（公网/frp）
+    url: http://112.74.98.147:3000
+api_urls:
+  - name: REST API
+    url: http://localhost:3000/api
+health_url: http://localhost:3000/info

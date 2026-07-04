@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import { PRESETS } from '@/lib/ai/providers-presets';
 
 interface Provider {
@@ -22,7 +22,7 @@ interface Props {
 }
 
 export default function AiProviderModal({ provider, onClose, onSaved }: Props) {
-  const { token } = useAuth();
+  const { token } = useAdminAuth();
   const isEdit = !!provider;
   const [preset, setPreset] = useState(provider?.provider ?? 'deepseek');
   const [name, setName] = useState(provider?.name ?? '');

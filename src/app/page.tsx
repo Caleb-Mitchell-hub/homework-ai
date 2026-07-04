@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { Suspense, useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getCategoryDisplay, PREFIX_PRESET, PRESET_CATEGORIES } from '@/lib/quizCategories';
@@ -16,6 +16,14 @@ interface QuizListItem {
 }
 
 export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-400">加载中...</div>}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, token, loading } = useAuth();
@@ -124,53 +132,72 @@ export default function Home() {
 
           {/* 游客职业切换 */}
           {user?.isGuest && (
-            <div className="flex items-center justify-center gap-2 mt-3">
-              <span className="text-[11px] text-slate-400">当前职业：</span>
-              <select
-                value={guestProfessionId}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setGuestProfessionId(v);
-                  if (v) localStorage.setItem('guestProfessionId', v);
-                  else localStorage.removeItem('guestProfessionId');
-                }}
-                className="text-[12px] px-3 py-1.5 bg-white/80 border border-slate-200 rounded-lg text-slate-600 focus:outline-none focus:border-sky-400"
-              >
-                <option value="">未选择</option>
-                {professions.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+            <div className="flex items-center justify-center gap-2.5 mt-3">
+              <span className="text-[12px] text-slate-500 font-medium">当前职业</span>
+              <div className="relative">
+                <select
+                  value={guestProfessionId}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setGuestProfessionId(v);
+                    if (v) localStorage.setItem('guestProfessionId', v);
+                    else localStorage.removeItem('guestProfessionId');
+                  }}
+                  className="text-[13px] pl-3.5 pr-8 py-2 bg-white/80 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 appearance-none cursor-pointer hover:border-sky-300 transition-colors min-w-[140px]"
+                >
+                  <option value="">未选择</option>
+                  {professions.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
           )}
 
           {/* 登录用户未选择职业提示 */}
           {user && !user.isGuest && !user.professionId && (
-            <div className="mt-3 p-2.5 bg-sky-50 border border-sky-200 rounded-xl text-[12.5px] text-sky-700 inline-flex items-center gap-2">
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>暂未选择职业，部分题库可能不可见。</span>
-              <select
-                value={user.professionId || ''}
-                onChange={async (e) => {
-                  const v = e.target.value || null;
-                  const token = localStorage.getItem('token');
-                  if (!token) return;
-                  await fetch('/api/user/profession', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ professionId: v }),
-                  });
-                  window.location.reload();
-                }}
-                className="text-[12px] px-2 py-1 bg-white border border-sky-300 rounded-lg text-sky-700 focus:outline-none"
-              >
-                <option value="">选择职业</option>
-                {professions.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+            <div className="mt-4 inline-flex flex-col items-center gap-2.5 p-3.5 bg-white/70 border border-slate-200/60 rounded-2xl shadow-sm">
+              <div className="flex items-center gap-2 text-[13px] text-slate-600">
+                <svg className="w-4 h-4 flex-shrink-0 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>请选择你的职业，以查看对应的题库</span>
+              </div>
+              <div className="relative">
+                <select
+                  value={user.professionId || ''}
+                  onChange={async (e) => {
+                    const v = e.target.value || null;
+                    const token = localStorage.getItem('token');
+                    if (!token) return;
+                    await fetch('/api/user/profession', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ professionId: v }),
+                    });
+                    // 更新 localStorage 中的 user，避免刷新后再次提示
+                    const storedUser = localStorage.getItem('user');
+                    if (storedUser) {
+                      const u = JSON.parse(storedUser);
+                      u.professionId = v;
+                      localStorage.setItem('user', JSON.stringify(u));
+                    }
+                    window.location.reload();
+                  }}
+                  className="text-[13px] pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 appearance-none cursor-pointer hover:border-sky-300 transition-colors min-w-[160px]"
+                >
+                  <option value="">选择职业…</option>
+                  {professions.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
           )}
         </div>

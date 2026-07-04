@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { parseMarkdown } from '@/lib/parser';
-import { aiParseQuestions } from '@/lib/ai/parser';
+import { aiParseQuestionsStream } from '@/lib/ai/parser';
 import { normalizeAIOutputToQuestions } from '@/lib/ai/normalize';
 import { getSession } from '@/lib/sessionStore';
 import { verifyAdminToken, getTokenFromHeaders } from '@/lib/admin-auth';
@@ -88,14 +88,23 @@ export async function POST(req: NextRequest) {
             return;
           }
           if (req.signal.aborted) throw new Error('aborted');
-          send({ progress: 30, message: '调用 AI 厂商...' });
-          if (req.signal.aborted) throw new Error('aborted');
-          send({ progress: 60, message: '等待 AI 响应(通常 10-30 秒)...' });
-          const raw = await aiParseQuestions({ text, provider, signal: req.signal });
-          if (req.signal.aborted) throw new Error('aborted');
-          send({ progress: 90, message: '规范化题目...' });
-          const questions = normalizeAIOutputToQuestions(raw, genId);
-          send({ progress: 100, message: '解析完成', questions });
+          // 真实进度:流式消费 AI 输出,逐 chunk 上报字符进度
+          for await (const evt of aiParseQuestionsStream({
+            text,
+            provider,
+            signal: req.signal,
+          })) {
+            if (req.signal.aborted) throw new Error('aborted');
+            if (evt.type === 'progress') {
+              send({ progress: evt.data.progress, message: evt.data.message });
+            } else if (evt.type === 'error') {
+              send({ progress: 0, message: evt.error, error: evt.error });
+              return;
+            } else if (evt.type === 'complete') {
+              send({ progress: 100, message: '解析完成', questions: evt.questions });
+              return;
+            }
+          }
         }
       } catch (err) {
         if (err instanceof Error && err.message === 'aborted') {

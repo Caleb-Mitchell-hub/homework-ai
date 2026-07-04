@@ -19,17 +19,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '密码长度至少6个字符' }, { status: 400 });
     }
 
-    // 密保问题(注册时强制设置)
-    if (!securityQuestion || !securityAnswer) {
-      return NextResponse.json({ error: '请设置密保问题和答案' }, { status: 400 });
-    }
-    const validKeys = PREDEFINED_QUESTIONS.map((q) => q.key);
-    if (!validKeys.includes(securityQuestion)) {
-      return NextResponse.json({ error: '无效的密保问题' }, { status: 400 });
-    }
-    const answerTrimmed = String(securityAnswer).trim();
-    if (answerTrimmed.length < 2) {
-      return NextResponse.json({ error: '密保答案至少 2 个字符' }, { status: 400 });
+    // 密保问题可选：用户注册后可单独设置
+    let hashedAnswer: string | null = null;
+    let finalSecurityQuestion: string | null = null;
+    if (securityQuestion || securityAnswer) {
+      if (!securityQuestion || !securityAnswer) {
+        return NextResponse.json({ error: '密保问题和答案需同时提供' }, { status: 400 });
+      }
+      const validKeys = PREDEFINED_QUESTIONS.map((q) => q.key);
+      if (!validKeys.includes(securityQuestion)) {
+        return NextResponse.json({ error: '无效的密保问题' }, { status: 400 });
+      }
+      const answerTrimmed = String(securityAnswer).trim();
+      if (answerTrimmed.length < 2) {
+        return NextResponse.json({ error: '密保答案至少 2 个字符' }, { status: 400 });
+      }
+      hashedAnswer = await bcrypt.hash(answerTrimmed.toLowerCase(), 10);
+      finalSecurityQuestion = securityQuestion;
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -41,14 +47,13 @@ export async function POST(request: Request) {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const hashedAnswer = await bcrypt.hash(answerTrimmed.toLowerCase(), 10);
 
     const user = await prisma.user.create({
       data: {
         username,
         password: hashedPassword,
         isGuest: false,
-        securityQuestion,
+        securityQuestion: finalSecurityQuestion,
         securityAnswerHash: hashedAnswer,
         professionId: professionId || null,
       },
