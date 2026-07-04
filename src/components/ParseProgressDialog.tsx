@@ -31,14 +31,22 @@ export default function ParseProgressDialog({
   const [state, setState] = useState<ParseProgress>({ progress: 0, message: '准备中...' });
   const completedRef = useRef(false);
 
+  // Effect deps intentionally only include `open`. The effect should only run
+  // when the dialog opens/closes; the latest closure values for `text`,
+  // `mode`, `token`, `onComplete`, `onError`, and `onCancel` are read at the
+  // time the dialog opens. Re-running on every callback identity change would
+  // abort and restart the in-flight SSE stream.
   useEffect(() => {
     if (!open) return;
     completedRef.current = false;
     setState({ progress: 0, message: '准备中...' });
 
     const ctrl = new AbortController();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
 
     (async () => {
+      let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
       try {
         const res = await fetch('/api/ai/parse-stream', {
           method: 'POST',
@@ -54,7 +62,7 @@ export default function ParseProgressDialog({
           throw new Error(errData.error ?? `HTTP ${res.status}`);
         }
 
-        const reader = res.body.getReader();
+        reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buf = '';
         while (true) {
@@ -75,11 +83,23 @@ export default function ParseProgressDialog({
                   completedRef.current = true;
                   onError(evt.error);
                 }
+                await reader.cancel().catch(() => {});
                 return;
               }
-              if (evt.progress === 100 && evt.questions && !completedRef.current) {
-                completedRef.current = true;
-                onComplete(evt.questions);
+              if (evt.progress === 100) {
+                if (!evt.questions) {
+                  if (!completedRef.current) {
+                    completedRef.current = true;
+                    onError('解析响应格式异常');
+                  }
+                  await reader.cancel().catch(() => {});
+                  return;
+                }
+                if (!completedRef.current) {
+                  completedRef.current = true;
+                  onComplete(evt.questions);
+                }
+                await reader.cancel().catch(() => {});
                 return;
               }
             } catch {
@@ -87,17 +107,28 @@ export default function ParseProgressDialog({
             }
           }
         }
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
+
+        // Stream ended without completion or error event — treat as hang.
         if (!completedRef.current) {
           completedRef.current = true;
-          onError(err?.message ?? '解析失败');
+          onError('解析中断');
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        if (!completedRef.current) {
+          completedRef.current = true;
+          onError(err instanceof Error ? err.message : '解析失败');
+        }
+      } finally {
+        if (reader) {
+          reader.cancel().catch(() => {});
         }
       }
     })();
 
     return () => {
       ctrl.abort();
+      document.body.style.overflow = prevOverflow;
     };
   }, [open]);
 
@@ -117,13 +148,29 @@ export default function ParseProgressDialog({
           {isAi ? '🧠 AI 解析中' : '⚡ 本地解析中'}
           <span className="text-[11px] text-slate-400 font-normal">{state.progress}%</span>
         </h3>
-        <div className="h-2 bg-slate-100 rounded-full overflow-hidden mb-2">
+        <div
+          className="h-2 bg-slate-100 rounded-full overflow-hidden mb-2"
+          role="progressbar"
+          aria-valuenow={state.progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={isAi ? 'AI 解析进度' : '本地解析进度'}
+        >
           <div
             className="h-full bg-gradient-to-r from-sky-400 to-emerald-400 transition-all duration-300"
             style={{ width: `${state.progress}%` }}
           />
         </div>
         <p className="text-[12px] text-slate-500 min-h-[1.25rem]">{state.message}</p>
+
+        {!state.error && (
+          <button
+            onClick={onCancel}
+            className="mt-3 text-[12px] text-slate-500 hover:text-slate-700"
+          >
+            取消
+          </button>
+        )}
 
         {state.error && (
           <div className="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-lg">
