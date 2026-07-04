@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { parseMarkdown, extractTitle } from '@/lib/parser';
+import { extractTitle } from '@/lib/parser';
 import { Question } from '@/types';
-import DualPreview, { type DualAiState } from '@/components/DualPreview';
+import ParseChoiceDialog from '@/components/ParseChoiceDialog';
+import ParseProgressDialog from '@/components/ParseProgressDialog';
 
 const ALLOWED_ACCEPT = '.md,.txt,.pdf,.docx,.png,.jpg,.jpeg,.webp';
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -36,9 +37,29 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
   const [preview, setPreview] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showChoice, setShowChoice] = useState(false);
+  const [showProgress, setShowProgress] = useState(false);
+  const [parseMode, setParseMode] = useState<'local' | 'ai'>('local');
+  const [aiAvailable, setAiAvailable] = useState(false);
+  const [aiAvailableResolved, setAiAvailableResolved] = useState(false);
+  const [pendingChoiceOpen, setPendingChoiceOpen] = useState(false);
   const { token } = useAuth();
-  const [aiState, setAiState] = useState<DualAiState>({ status: 'idle' });
-  const [aiStart, setAiStart] = useState(0);
+
+  // AI 可用性探测
+  useEffect(() => {
+    fetch('/api/ai/available')
+      .then((r) => r.json())
+      .then((d) => { setAiAvailable(!!d.available); setAiAvailableResolved(true); })
+      .catch(() => { setAiAvailable(false); setAiAvailableResolved(true); });
+  }, []);
+
+  // 探测完成后,若期间收到"打开选择对话框"的请求,立即打开
+  useEffect(() => {
+    if (pendingChoiceOpen && aiAvailableResolved) {
+      setShowChoice(true);
+      setPendingChoiceOpen(false);
+    }
+  }, [pendingChoiceOpen, aiAvailableResolved]);
 
   const isAdmin = tone === 'admin';
   const gradient = isAdmin
@@ -65,8 +86,12 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
       const reader = new FileReader();
       reader.onload = (ev) => {
         const result = ev.target?.result as string;
-        if (result) setPreview(result);
-        else setError('文件读取失败，请尝试重新选择文件');
+        if (result) {
+          setPreview(result);
+          setPendingChoiceOpen(true);
+        } else {
+          setError('文件读取失败，请尝试重新选择文件');
+        }
       };
       reader.onerror = () => setError('文件读取失败，请尝试重新选择文件');
       reader.readAsText(file);
@@ -83,6 +108,7 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? '上传失败');
         setPreview(data.text ?? '');
+        setPendingChoiceOpen(true);
       } catch (err: any) {
         setError(String(err?.message ?? err));
       } finally {
@@ -112,55 +138,30 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
     [handleFile]
   );
 
-  const fetchAi = async () => {
-    if (!preview.trim()) return;
-    setAiStart(Date.now());
-    setAiState({ status: 'loading', elapsed: 0 });
+  const handleParseChoice = (mode: 'local' | 'ai') => {
+    setParseMode(mode);
+    setShowChoice(false);
+    setShowProgress(true);
+  };
+
+  const handleParseComplete = async (questions: unknown[]) => {
+    setShowProgress(false);
+    const qs = questions as Array<{ type: string; content: string; answer: string; score?: number; options?: string[]; analysis?: string }>;
+    if (qs.length === 0) {
+      setError('未能解析到任何题目');
+      return;
+    }
+    const title = extractTitle(preview);
     try {
-      const res = await fetch('/api/ai/parse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ text: preview }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? '解析失败');
-      setAiState({ status: 'done', questions: data.questions ?? [] });
-    } catch (err: any) {
-      setAiState({ status: 'error', message: String(err?.message ?? err) });
+      await onParsed(title, qs as unknown as Question[]);
+    } catch (err) {
+      setError('保存失败: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
-  useEffect(() => {
-    if (aiState.status !== 'loading') return;
-    const t = setInterval(() => {
-      setAiState((s) => s.status === 'loading'
-        ? { ...s, elapsed: Math.floor((Date.now() - aiStart) / 1000) }
-        : s);
-    }, 1000);
-    return () => clearInterval(t);
-  }, [aiState.status, aiStart]);
-
-  const handleParse = async () => {
-    if (!preview.trim()) {
-      setError('请先选择文件或粘贴内容');
-      return;
-    }
-    setIsLoading(true);
-    setError('');
-    try {
-      const questions = parseMarkdown(preview);
-      if (questions.length === 0) {
-        setError('未能解析到任何题目，请检查文件格式是否正确');
-        setIsLoading(false);
-        return;
-      }
-      const title = extractTitle(preview);
-      await onParsed(title, questions);
-    } catch (err) {
-      setError('解析失败：' + (err as Error).message);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleParseError = (err: string) => {
+    setShowProgress(false);
+    setError('解析失败: ' + err);
   };
 
   const handleClear = () => {
@@ -213,29 +214,6 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
           placeholder={`# 题库标题\n## 一、单选题\n1. ...\nA. ...\nB. ...\n答案：A\n## 二、...\n## 七、答案\n1. A 2. ...`}
           className={`w-full h-64 p-4 bg-white/80 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none ${focusBorder} focus:ring-4 resize-none font-mono text-sm shadow-sm`}
         />
-        <div className="flex items-center gap-2 mt-2">
-          <button
-            onClick={fetchAi}
-            disabled={aiState.status === 'loading' || !preview.trim()}
-            className="px-3 py-1.5 bg-violet-500 text-white text-[12px] rounded-lg hover:bg-violet-600 disabled:opacity-50"
-          >
-            {aiState.status === 'loading' ? 'AI 解析中...' : '🧠 AI 解析'}
-          </button>
-          {aiState.status === 'done' && (
-            <span className="text-[11px] text-emerald-600">✓ AI: {aiState.questions.length} 道题</span>
-          )}
-          {aiState.status === 'error' && (
-            <span className="text-[11px] text-rose-600">⚠ {aiState.message}</span>
-          )}
-          {aiState.status === 'loading' && (
-            <span className="text-[11px] text-slate-400">⏳ {aiState.elapsed}s</span>
-          )}
-        </div>
-        {aiState.status === 'error' && aiState.message.includes('未配置 AI 厂商') && (
-          <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-[12px]">
-            ⚠ 未配置 AI 厂商,当前仅可使用本地解析。请管理员在「AI 配置」中设置激活厂商后再使用 AI 解析。
-          </div>
-        )}
       </div>
 
       {/* 错误提示 */}
@@ -258,7 +236,7 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
           清空
         </button>
         <button
-          onClick={handleParse}
+          onClick={() => { if (!preview.trim()) return; setError(''); setPendingChoiceOpen(true); }}
           disabled={!preview.trim() || isLoading || busy}
           className={`flex-1 py-4 bg-gradient-to-r ${gradient} text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex items-center justify-center gap-2`}
         >
@@ -275,6 +253,29 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
           )}
         </button>
       </div>
+
+      {/* 选择解析方式对话框 */}
+      {showChoice && (
+        <ParseChoiceDialog
+          open={showChoice}
+          onClose={() => setShowChoice(false)}
+          onSelect={handleParseChoice}
+          aiAvailable={aiAvailable}
+        />
+      )}
+
+      {/* 解析进度对话框 */}
+      {showProgress && (
+        <ParseProgressDialog
+          open={showProgress}
+          mode={parseMode}
+          text={preview}
+          token={token}
+          onComplete={handleParseComplete}
+          onError={handleParseError}
+          onCancel={() => setShowProgress(false)}
+        />
+      )}
 
       {/* 提示信息 */}
       <div className={`mt-6 p-4 bg-${isAdmin ? 'indigo' : 'sky'}-50/60 border border-${isAdmin ? 'indigo' : 'sky'}-100 rounded-xl text-xs text-slate-600 leading-relaxed`}>
