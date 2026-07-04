@@ -15,7 +15,9 @@ vi.mock('@/contexts/AuthContext', () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-import QuizUploadPanel from '@/components/admin/QuizUploadPanel';
+import QuizUploadPanel, { type ParsedQuestion } from '@/components/admin/QuizUploadPanel';
+
+type OnParsed = (title: string, questions: ParsedQuestion[]) => Promise<void>;
 
 function makeSseStream(events: any[]) {
   const body = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('');
@@ -27,21 +29,44 @@ function makeSseStream(events: any[]) {
   });
 }
 
+function makeFetchMock(
+  responses: Partial<Record<string, unknown>> = {}
+) {
+  const fn = vi.fn(async (url: string, _init?: RequestInit) => {
+    const key = Object.keys(responses).find((k) => url.includes(k));
+    const v = key ? responses[key] : undefined;
+    if (typeof v === 'function') return (v as (u: string) => unknown)(url);
+    if (v === undefined) {
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    }
+    return v;
+  });
+  return fn;
+}
+
+function makeAiAvailableResp(available: boolean) {
+  return {
+    ok: true,
+    json: async () => ({ available }),
+  };
+}
+
 describe('QuizUploadPanel - parse flow', () => {
-  let onParsed: ReturnType<typeof vi.fn>;
+  let onParsed: ReturnType<typeof vi.fn<(title: string, questions: ParsedQuestion[]) => Promise<void>>>;
 
   beforeEach(() => {
     mockFetch.mockReset();
-    onParsed = vi.fn().mockResolvedValue(undefined);
+    onParsed = vi.fn<(title: string, questions: ParsedQuestion[]) => Promise<void>>().mockResolvedValue(undefined);
+    // 默认探测不可用,具体用例可覆盖
+    (global as { fetch: unknown }).fetch = vi.fn(async () => makeAiAvailableResp(false));
   });
 
   it('opens choice dialog after file is read into textarea', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ available: false }),
+    (global as { fetch: unknown }).fetch = makeFetchMock({
+      '/api/ai/available': makeAiAvailableResp(false),
     });
 
-    const { findByText } = render(<QuizUploadPanel onParsed={onParsed as any} />);
+    const { findByText } = render(<QuizUploadPanel onParsed={onParsed} />);
 
     const file = new File(['# hi\nA. one'], 'test.md', { type: 'text/markdown' });
     const input = document.querySelector('input[type=file]') as HTMLInputElement;
@@ -51,24 +76,17 @@ describe('QuizUploadPanel - parse flow', () => {
   });
 
   it('calls onParsed with parsed questions after local parse completes', async () => {
-    // mockFetch order: ai/available, parse-stream, (no /api/quizzes since onParsed handles it)
-    mockFetch.mockImplementation(async (url: any) => {
-      const u = String(url);
-      if (u.includes('/api/ai/available')) {
-        return { ok: true, json: async () => ({ available: false }) };
-      }
-      if (u.includes('/api/ai/parse-stream')) {
-        return {
-          ok: true,
-          body: makeSseStream([
-            { progress: 100, message: 'ok', questions: [{ type: 'single', content: 'q1', answer: 'A', score: 10 }] },
-          ]),
-        };
-      }
-      return { ok: false, status: 404 };
+    (global as { fetch: unknown }).fetch = makeFetchMock({
+      '/api/ai/available': makeAiAvailableResp(false),
+      '/api/ai/parse-stream': {
+        ok: true,
+        body: makeSseStream([
+          { progress: 100, message: 'ok', questions: [{ type: 'single', content: 'q1', answer: 'A', score: 10 }] },
+        ]),
+      },
     });
 
-    const { findByRole } = render(<QuizUploadPanel onParsed={onParsed as any} />);
+    const { findByRole } = render(<QuizUploadPanel onParsed={onParsed} />);
 
     const file = new File(['# Title\nA. one\n答案: A'], 'test.md', { type: 'text/markdown' });
     const input = document.querySelector('input[type=file]') as HTMLInputElement;
@@ -82,5 +100,80 @@ describe('QuizUploadPanel - parse flow', () => {
     expect(typeof title).toBe('string');
     expect(questions).toHaveLength(1);
     expect(questions[0].content).toBe('q1');
+  });
+
+  it('AI parse mode happy path: invokes onParsed when AI available', async () => {
+    (global as { fetch: unknown }).fetch = makeFetchMock({
+      '/api/ai/available': makeAiAvailableResp(true),
+      '/api/ai/parse-stream': {
+        ok: true,
+        body: makeSseStream([
+          { progress: 100, message: 'ok', questions: [{ type: 'judge', content: 'q?', answer: 'true', score: 5 }] },
+        ]),
+      },
+    });
+
+    const { findByRole } = render(<QuizUploadPanel onParsed={onParsed} />);
+
+    const file = new File(['# ai\nA. one'], 'test.md', { type: 'text/markdown' });
+    const input = document.querySelector('input[type=file]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    const aiBtn = await findByRole('button', { name: /AI 解析/ });
+    expect(aiBtn).toHaveProperty('disabled', false);
+    fireEvent.click(aiBtn);
+
+    await waitFor(() => expect(onParsed).toHaveBeenCalled());
+    const [, questions] = onParsed.mock.calls[0];
+    expect(questions[0].type).toBe('judge');
+  });
+
+  it('sets error when SSE returns an empty questions array', async () => {
+    (global as { fetch: unknown }).fetch = makeFetchMock({
+      '/api/ai/available': makeAiAvailableResp(false),
+      '/api/ai/parse-stream': {
+        ok: true,
+        body: makeSseStream([
+          { progress: 100, message: 'ok', questions: [] },
+        ]),
+      },
+    });
+
+    const { findByRole, findByText } = render(<QuizUploadPanel onParsed={onParsed} />);
+
+    const file = new File(['# empty\nA. one'], 'test.md', { type: 'text/markdown' });
+    const input = document.querySelector('input[type=file]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    const localBtn = await findByRole('button', { name: /本地解析/ });
+    fireEvent.click(localBtn);
+
+    await findByText('未能解析到任何题目');
+    expect(onParsed).not.toHaveBeenCalled();
+  });
+
+  it('propagates error from onParsed to setError', async () => {
+    onParsed.mockRejectedValueOnce(new Error('保存出错啦'));
+    (global as { fetch: unknown }).fetch = makeFetchMock({
+      '/api/ai/available': makeAiAvailableResp(false),
+      '/api/ai/parse-stream': {
+        ok: true,
+        body: makeSseStream([
+          { progress: 100, message: 'ok', questions: [{ type: 'single', content: 'q1', answer: 'A', score: 10 }] },
+        ]),
+      },
+    });
+
+    const { findByRole, findByText } = render(<QuizUploadPanel onParsed={onParsed} />);
+
+    const file = new File(['# t\nA. one'], 'test.md', { type: 'text/markdown' });
+    const input = document.querySelector('input[type=file]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    const localBtn = await findByRole('button', { name: /本地解析/ });
+    fireEvent.click(localBtn);
+
+    await findByText('保存失败: 保存出错啦');
+    expect(onParsed).toHaveBeenCalled();
   });
 });

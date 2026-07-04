@@ -3,13 +3,26 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { extractTitle } from '@/lib/parser';
-import { Question } from '@/types';
 import ParseChoiceDialog from '@/components/ParseChoiceDialog';
 import ParseProgressDialog from '@/components/ParseProgressDialog';
 
 const ALLOWED_ACCEPT = '.md,.txt,.pdf,.docx,.png,.jpg,.jpeg,.webp';
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXT = ['md', 'txt', 'pdf', 'docx', 'png', 'jpg', 'jpeg', 'webp'];
+
+/**
+ * SSE/本地解析器的输出 shape。
+ * 注意：与 @/types 的 Question（Discriminated Union）不同 —— 解析器用 `content`/`answer`/`'judge'`
+ * 而非 `title`/`correctAnswer`/`'boolean'`。父组件按本结构直接 POST 到后端。
+ */
+export interface ParsedQuestion {
+  type: 'single' | 'multiple' | 'judge' | 'fill' | 'essay' | 'code';
+  content: string;
+  options?: string[];
+  answer: string;
+  analysis?: string;
+  score?: number;
+}
 
 function resolveFileAccept(file: File): 'text' | 'upload' {
   const ext = file.name.toLowerCase().split('.').pop() ?? '';
@@ -23,7 +36,7 @@ type Tone = 'admin' | 'user';
 interface Props {
   tone?: Tone;
   /** 解析成功后回调，父组件负责 POST + 跳转 */
-  onParsed: (title: string, questions: Question[]) => Promise<void>;
+  onParsed: (title: string, questions: ParsedQuestion[]) => Promise<void>;
   busy?: boolean;
 }
 
@@ -74,6 +87,7 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
   const iconColor = isAdmin ? 'text-indigo-500' : 'text-sky-500';
   const borderHover = isAdmin ? 'hover:border-indigo-400' : 'hover:border-sky-400';
   const textHover = isAdmin ? 'hover:text-indigo-600' : 'hover:text-sky-600';
+  const tipBox = isAdmin ? 'bg-indigo-50/60 border-indigo-100' : 'bg-sky-50/60 border-sky-100';
 
   const handleFile = useCallback(async (file: File) => {
     setError('');
@@ -146,14 +160,14 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
 
   const handleParseComplete = async (questions: unknown[]) => {
     setShowProgress(false);
-    const qs = questions as Array<{ type: string; content: string; answer: string; score?: number; options?: string[]; analysis?: string }>;
+    const qs = questions as ParsedQuestion[];
     if (qs.length === 0) {
       setError('未能解析到任何题目');
       return;
     }
     const title = extractTitle(preview);
     try {
-      await onParsed(title, qs as unknown as Question[]);
+      await onParsed(title, qs);
     } catch (err) {
       setError('保存失败: ' + (err instanceof Error ? err.message : String(err)));
     }
@@ -210,7 +224,7 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
         <p className="text-slate-500 text-sm mb-2">或直接粘贴 Markdown 内容：</p>
         <textarea
           value={preview}
-          onChange={(e) => setPreview(e.target.value)}
+          onChange={(e) => { setPreview(e.target.value); if (error) setError(''); }}
           placeholder={`# 题库标题\n## 一、单选题\n1. ...\nA. ...\nB. ...\n答案：A\n## 二、...\n## 七、答案\n1. A 2. ...`}
           className={`w-full h-64 p-4 bg-white/80 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none ${focusBorder} focus:ring-4 resize-none font-mono text-sm shadow-sm`}
         />
@@ -278,7 +292,7 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
       )}
 
       {/* 提示信息 */}
-      <div className={`mt-6 p-4 bg-${isAdmin ? 'indigo' : 'sky'}-50/60 border border-${isAdmin ? 'indigo' : 'sky'}-100 rounded-xl text-xs text-slate-600 leading-relaxed`}>
+      <div className={`mt-6 p-4 ${tipBox} rounded-xl text-xs text-slate-600 leading-relaxed`}>
         <p className="font-medium text-slate-700 mb-1.5">📖 文件格式说明</p>
         <p>使用 <code className="px-1.5 py-0.5 bg-white rounded text-slate-700">##</code> 标记题型（例：一、选择题），用 <code className="px-1.5 py-0.5 bg-white rounded text-slate-700">A. 选项内容</code> 列选项，代码块用 <code className="px-1.5 py-0.5 bg-white rounded text-slate-700">```</code> 包裹，最后用「## 七、答案」段落给出答案。</p>
       </div>

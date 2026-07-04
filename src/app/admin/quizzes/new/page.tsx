@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import AdminSidebar from '@/components/AdminSidebar';
-import QuizUploadPanel from '@/components/admin/QuizUploadPanel';
-import { Question as GlobalQuestion } from '@/types';
+import QuizUploadPanel, { type ParsedQuestion } from '@/components/admin/QuizUploadPanel';
 
 interface Question {
   id?: string;
@@ -237,7 +236,7 @@ export default function NewQuizPage() {
             <QuizUploadPanel
               tone="admin"
               busy={saving}
-              onParsed={async (parsedTitle, parsedQuestions: GlobalQuestion[]) => {
+              onParsed={async (parsedTitle, parsedQuestions: ParsedQuestion[]) => {
                 setError('');
                 if (!parsedTitle.trim()) {
                   setError('未能从文件中提取到标题');
