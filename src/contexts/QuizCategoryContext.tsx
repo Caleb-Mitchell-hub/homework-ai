@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { PRESET_CATEGORIES, PREFIX_USER } from '@/lib/quizCategories';
 
 /**
@@ -68,40 +69,39 @@ function saveUserCats(userId: string, list: QuizUserCategory[]) {
 }
 
 export function QuizCategoryProvider({ children }: { children: ReactNode }) {
-  const [userId, setUserId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const currentUserId: string | null = user?.id ?? null;
   const [userCategories, setUserCategories] = useState<QuizUserCategory[]>([]);
+  const lastUserIdRef = useRef<string | null>(null);
+  const hydratedRef = useRef(false);
 
-  // 监听 storage 事件 + AuthContext 变化 → 重新 hydrate
+  // user 切换时重新 hydrate（沿用与 CategoryContext 相同的模式，不再自己读 auth_user）
   useEffect(() => {
-    function refresh() {
-      const authRaw = typeof window !== 'undefined' ? localStorage.getItem('auth_user') : null;
-      let uid: string | null = null;
-      try {
-        if (authRaw) {
-          const u = JSON.parse(authRaw);
-          if (u && typeof u.id === 'string') uid = u.id;
-        }
-      } catch {}
-      setUserId(uid);
-      if (uid) {
-        setUserCategories(loadUserCats(uid));
-      } else {
+    if (currentUserId) {
+      if (lastUserIdRef.current === currentUserId) return;
+      lastUserIdRef.current = currentUserId;
+      setUserCategories(loadUserCats(currentUserId));
+      hydratedRef.current = true;
+    } else {
+      if (lastUserIdRef.current !== null) {
+        lastUserIdRef.current = null;
         setUserCategories([]);
+        hydratedRef.current = false;
       }
     }
-    refresh();
-    window.addEventListener('storage', refresh);
-    // 监听自定义事件:AuthContext 登录/登出时 dispatch
-    window.addEventListener('homework-auth-changed', refresh);
-    return () => {
-      window.removeEventListener('storage', refresh);
-      window.removeEventListener('homework-auth-changed', refresh);
-    };
-  }, []);
+  }, [currentUserId]);
+
+  // 持久化(hydration 完成后才写,避免初始空数组覆盖已有数据)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!currentUserId) return;
+    if (!hydratedRef.current) return;
+    saveUserCats(currentUserId, userCategories);
+  }, [userCategories, currentUserId]);
 
   const addUserCategory = useCallback(
     (name: string): string => {
-      if (!userId) throw new Error('未登录,不能创建分类');
+      if (!currentUserId) throw new Error('未登录,不能创建分类');
       const trimmed = name.trim();
       if (!trimmed) throw new Error('分类名不能为空');
       const newCat: QuizUserCategory = {
@@ -111,21 +111,19 @@ export function QuizCategoryProvider({ children }: { children: ReactNode }) {
       };
       const next = [...userCategories, newCat];
       setUserCategories(next);
-      saveUserCats(userId, next);
       return `${PREFIX_USER}${newCat.id}`;
     },
-    [userId, userCategories]
+    [currentUserId, userCategories]
   );
 
   const removeUserCategory = useCallback(
     (fullId: string) => {
-      if (!userId) return;
+      if (!currentUserId) return;
       const bare = fullId.startsWith(PREFIX_USER) ? fullId.slice(PREFIX_USER.length) : fullId;
       const next = userCategories.filter((c) => c.id !== bare);
       setUserCategories(next);
-      saveUserCats(userId, next);
     },
-    [userId, userCategories]
+    [currentUserId, userCategories]
   );
 
   const all = [
@@ -150,7 +148,7 @@ export function QuizCategoryProvider({ children }: { children: ReactNode }) {
 
   return (
     <QuizCategoryContext.Provider
-      value={{ all, userCategories, addUserCategory, removeUserCategory, currentUserId: userId }}
+      value={{ all, userCategories, addUserCategory, removeUserCategory, currentUserId }}
     >
       {children}
     </QuizCategoryContext.Provider>

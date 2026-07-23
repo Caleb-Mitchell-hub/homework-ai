@@ -122,10 +122,10 @@ export default function QuizPage() {
     }
   }, [answers, quiz]);
 
-  // 弹窗打开时重置分类选择
-  useEffect(() => {
-    if (showNameDialog) setSelectedCategoryId(null);
-  }, [showNameDialog]);
+  // 注:不要在弹窗打开时重置 selectedCategoryId。
+  // 该值在初始加载时已经从 quiz.defaultCategoryId 恢复(见上面 useEffect)，
+  // 重置会把"上次保存的分类"清掉,迫使用户每次重选。
+  // 如需清空,让用户在 CategorySelect 里手动选"未分类"。
 
   // 倒计时
   useEffect(() => {

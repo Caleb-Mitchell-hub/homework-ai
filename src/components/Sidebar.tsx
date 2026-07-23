@@ -8,6 +8,7 @@ import { QuizResult } from '@/types';
 import { useRouter, usePathname } from 'next/navigation';
 import SettingsPanel from '@/components/SettingsPanel';
 import CategoryTree from '@/components/CategoryTree';
+import CreditBadge from '@/components/CreditBadge';
 import { sha256Hex } from '@/lib/hash';
 import { useDialog } from '@/components/DialogProvider';
 import {
@@ -286,6 +287,7 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
               Workspace
             </p>
             <DateLabel />
+<CreditBadge />
           </div>
         </div>
         {/* 关闭按钮 */}
@@ -429,7 +431,15 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
                     placeholder: '例如: Docker',
                   });
                   if (name && name.trim()) {
-                    quizCat.addUserCategory(name.trim());
+                    try {
+                      quizCat.addUserCategory(name.trim());
+                    } catch (err: any) {
+                      await dialog.alert({
+                        title: '创建分类失败',
+                        message: err?.message || '请确认已登录后再试',
+                        confirmText: '知道了',
+                      });
+                    }
                   }
                 }}
                 className="w-full text-left flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-sky-500 hover:bg-sky-50/60 transition-colors"

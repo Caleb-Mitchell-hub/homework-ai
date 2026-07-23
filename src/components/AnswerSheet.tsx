@@ -3,6 +3,13 @@
 import { useState } from 'react';
 import { Highlight, themes } from 'prism-react-renderer';
 import { Quiz, QuizResult } from '@/types';
+import {
+  isCorrect,
+  formatCorrectAnswer,
+  getReferenceAnswer,
+} from '@/lib/answer-sheet-helpers';
+import AIExplainPanel from '@/components/AIExplainPanel';
+import { useAuth } from '@/contexts/AuthContext';
 
 const typeNames: Record<string, string> = {
   single: '单选题',
@@ -12,54 +19,6 @@ const typeNames: Record<string, string> = {
   essay: '简答题',
   code: '代码题',
 };
-
-/**
- * 判断用户答案与参考答案是否一致(用于客观题显示 ✓/✗)
- * - 单选:字符串相等
- * - 多选:忽略顺序后集合相等
- * - 判断:布尔/字符串归一比较
- * - 填空:trim 比较,支持多个空(用 | 分隔)任一匹配
- * - 简答/代码:不做客观判定(undefined),由老师人工
- */
-function isCorrect(q: any, userAnswer: string): boolean | undefined {
-  if (!userAnswer) return false;
-  const ref = q.answer ?? '';
-  if (!ref) return undefined;
-  const normalize = (s: string) => String(s).trim().toLowerCase();
-  switch (q.type) {
-    case 'single':
-    case 'boolean': {
-      return normalize(userAnswer) === normalize(ref);
-    }
-    case 'multiple': {
-      // ref 形如 "ABC" 或 "A,B,C",user 形如 "ABC" 或 "A,B,C"
-      const setNorm = (s: string) =>
-        s.split(/[,\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean).sort().join(',');
-      return setNorm(userAnswer) === setNorm(ref);
-    }
-    case 'fill': {
-      // ref 支持 "答案1|答案2" (任一即可),user 单值
-      const refs = String(ref).split('|').map((x) => normalize(x));
-      const u = normalize(userAnswer);
-      return refs.includes(u);
-    }
-    case 'essay':
-    case 'code':
-    default:
-      return undefined; // 主观题不评判
-  }
-}
-
-/** 显示用的正确答案短文本 */
-function formatCorrectAnswer(q: any): string {
-  if (q.type === 'essay') return '见详情';
-  if (q.type === 'code') {
-    const code = q.code ?? q.answer ?? '';
-    const firstLine = String(code).split('\n').find((l) => l.trim()) ?? '';
-    return firstLine.length > 24 ? firstLine.slice(0, 24) + '…' : firstLine;
-  }
-  return String(q.answer ?? '');
-}
 
 /**
  * 提交后的"答案速查"视图
@@ -73,6 +32,7 @@ function formatCorrectAnswer(q: any): string {
 export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: QuizResult }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [allOpen, setAllOpen] = useState(false);
+  const { token } = useAuth();
 
   const toggle = (id: string) => {
     setExpanded((prev) => {
@@ -115,11 +75,9 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
           const r = getRecord(q.id);
           const isOpen = expanded.has(q.id);
           const userAnswer = r?.userAnswer || '';
-          // 简答题：用 referenceAnswer 兜底；其他题用 answer
-          const refAnswer =
-            q.type === 'essay'
-              ? ((q as any).referenceAnswer ?? q.answer ?? '')
-              : q.answer ?? '';
+          // 参考答案/解析 —— 用 helper 统一取数,兼容 AI 解析(q.answer=解析文字)
+          // 和旧题库(q.answer=答案)两种情况
+          const refAnswer = getReferenceAnswer(q);
           // 简答/代码题的参考答案可能为多行代码块
           const isCode = q.type === 'code';
           const isEssay = q.type === 'essay';
@@ -145,7 +103,10 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                 >
                   {i + 1}
                 </span>
-                <span className="flex-1 min-w-0 truncate text-[13px] text-slate-700">
+                <span
+                  className="flex-1 min-w-0 text-[13px] text-slate-700 leading-snug line-clamp-2"
+                  title={q.title}
+                >
                   {q.title}
                 </span>
                 {/* 对错标记 */}
@@ -188,10 +149,8 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
 
               {isOpen && (
                 <div className="px-4 pb-4 pt-1 border-t border-slate-200/60 space-y-3">
-                  {/* 题目完整内容（防截断） */}
-                  <p className="text-[13.5px] text-slate-800 leading-relaxed whitespace-pre-wrap">
-                    {q.title}
-                  </p>
+                  {/* 注:题目标题已在折叠题头里展示(完整版本可 hover title 查看),
+                      展开区不再重复显示,避免冗余 */}
 
                   {/* 原始选项(单选/多选) */}
                   {(q.type === 'single' || q.type === 'multiple') &&
@@ -205,20 +164,19 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                           {((q as any).options as string[]).map((opt, idx) => {
                             // 选项字母 A/B/C/...
                             const letter = String.fromCharCode(65 + idx);
-                            // 是否为正确答案(参考答案里的字母)
-                            const correctLetters = String(q.answer ?? '')
-                              .toUpperCase()
-                              .split(/[,\s]+/)
-                              .filter(Boolean);
+                            // 是否为正确答案 —— 用 correctAnswer,而不是 q.answer
+                            // (AI 解析时 q.answer 是解析文字)
+                            const correctLetters: string[] = (
+                              String((q as any).correctAnswer ?? '').toUpperCase().match(
+                                /[A-Z]/g
+                              ) ?? []
+                            );
                             const isCorrectOpt = correctLetters.includes(letter);
-                            // 用户是否选了此项
-                            const userPicked = userAnswer
-                              ? userAnswer
-                                  .toUpperCase()
-                                  .split(/[,\s]+/)
-                                  .filter(Boolean)
-                                  .includes(letter)
-                              : false;
+                            // 用户是否选了此项 —— 兼容 "AC" / "A,C" 两种写法
+                            const userPickedLetters: string[] = userAnswer
+                              ? userAnswer.toUpperCase().match(/[A-Z]/g) ?? []
+                              : [];
+                            const userPicked = userPickedLetters.includes(letter);
                             // 视觉样式
                             let cls = 'bg-slate-50 border-slate-200 text-slate-700';
                             let badge: React.ReactNode = null;
@@ -270,7 +228,10 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                       <div className="flex gap-2">
                         {(['正确', '错误'] as const).map((label, idx) => {
                           const val = idx === 0 ? 'true' : 'false';
-                          const isCorrectOpt = String(q.answer ?? '').toLowerCase() === val;
+                          // 用 correctAnswer,而不是 q.answer(AI 解析时存的是解析)
+                          const isCorrectOpt = String(
+                            (q as any).correctAnswer ?? ''
+                          ).toLowerCase() === val;
                           const userPicked = userAnswer.toLowerCase() === val;
                           let cls = 'bg-slate-50 border-slate-200 text-slate-700';
                           let tag: React.ReactNode = null;
@@ -377,6 +338,22 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                       </div>
                     )}
                   </div>
+
+                  {/* AI 解析 - 仅错题显示 */}
+                  {correct === false && token && (
+                    <div className="pt-2 border-t border-slate-200/60">
+                      <div className="text-[10.5px] tracking-[0.2em] uppercase text-slate-400 mb-1.5">AI 解析</div>
+                      <AIExplainPanel
+                        questionId={q.id}
+                        questionContent={q.title}
+                        questionType={q.type}
+                        onNeedCredits={(req, bal) => {
+                          alert(`积分不足: 需要 ${req} 积分, 当前 ${bal} 积分。请前往 /credits 充值`);
+                          window.location.href = '/credits';
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </li>

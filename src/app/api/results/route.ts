@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { verifyAdminToken } from '@/lib/admin-auth';
 import { prisma } from '@/lib/prisma';
+import { pickRecordToUpdate } from '@/lib/results-dedup';
 
 /**
  * 解析请求中的 token —— 同时支持普通用户 token 和管理员 token。
@@ -106,43 +107,43 @@ export async function POST(request: Request) {
       return { ...r, results: arr };
     };
 
-    // 探测当前 (user, quiz) 下的 draft
-    const existingDraft = await prisma.quizResult.findFirst({
+    // 探测当前 (user, quiz) 下的所有记录(草稿 + 已提交)
+    // —— 一份题库对一个用户只保留一条,旧版本只看 draft 导致
+    // 提交过的题库再次提交时无 draft → 直接 create → N 条记录。
+    const existingList = await prisma.quizResult.findMany({
       where: {
         userId: payload.userId,
         quizId,
-        status: 'draft',
       },
     });
 
+    const decision = pickRecordToUpdate(existingList);
+
+    // 清掉重复的旧记录(每个 user+quiz 仅留最新一条,顺手清理历史脏数据)
+    if (decision && decision.drop.length > 0) {
+      await prisma.quizResult.deleteMany({
+        where: { id: { in: decision.drop.map((r) => r.id) } },
+      });
+    }
+
     let result: any;
 
-    if (status === 'submitted' && existingDraft) {
-      // 草稿 → 完成:升级同一行
+    if (decision) {
+      // 更新保留的那条(草稿升级为已提交 / 暂存 / 重新提交 都走这里)
       result = await prisma.quizResult.update({
-        where: { id: existingDraft.id },
+        where: { id: decision.keep.id },
         data: {
-          name: name || existingDraft.name,
+          name: name || decision.keep.name,
           score,
           totalScore,
           results: JSON.stringify(answerResults),
-          status: 'submitted',
-          submittedAt: new Date(),
-        },
-      });
-    } else if (status === 'draft' && existingDraft) {
-      // 暂存:更新现有 draft
-      result = await prisma.quizResult.update({
-        where: { id: existingDraft.id },
-        data: {
-          name: name || existingDraft.name,
-          score,
-          totalScore,
-          results: JSON.stringify(answerResults),
+          status: status || decision.keep.status,
+          // 提交时刷新 submittedAt,纯暂存保持原值
+          ...(status === 'submitted' ? { submittedAt: new Date() } : {}),
         },
       });
     } else {
-      // 全新创建(无 draft,或首次 submitted)
+      // 首次创建
       result = await prisma.quizResult.create({
         data: {
           quizId,

@@ -1,0 +1,77 @@
+'use client';
+
+import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+
+interface Props {
+  questionId: string;
+  questionContent: string;
+  questionType: string;
+  onNeedCredits: (required: number, balance: number) => void;
+}
+
+export default function AIExplainPanel({ questionId, questionContent, questionType, onNeedCredits }: Props) {
+  const { token } = useAuth();
+  const [state, setState] = useState<
+    | { status: 'idle' }
+    | { status: 'loading' }
+    | { status: 'done'; content: string }
+    | { status: 'error'; message: string }
+  >({ status: 'idle' });
+
+  const ask = async () => {
+    if (!token) return;
+    setState({ status: 'loading' });
+    try {
+      const res = await fetch('/api/ai/explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ questionId, content: questionContent, type: questionType }),
+      });
+      const data = await res.json();
+      if (res.status === 400 && data.required != null) {
+        onNeedCredits(data.required, data.balance);
+        setState({ status: 'idle' });
+        return;
+      }
+      if (!res.ok) throw new Error(data.error ?? '解析失败');
+      setState({ status: 'done', content: data.content });
+    } catch (err: any) {
+      setState({ status: 'error', message: err?.message ?? '解析失败' });
+    }
+  };
+
+  if (state.status === 'idle') {
+    return (
+      <button
+        onClick={ask}
+        className="px-3 py-1.5 bg-gradient-to-r from-violet-500 to-pink-500 text-white text-[12px] rounded-lg hover:opacity-90"
+      >
+        🧠 AI 解析此题
+      </button>
+    );
+  }
+
+  if (state.status === 'loading') {
+    return <div className="text-[12px] text-slate-500">AI 解析中...</div>;
+  }
+
+  if (state.status === 'done') {
+    return (
+      <div className="mt-2 space-y-1.5">
+        <div className="text-[11px] text-emerald-600">✓ AI 解析完成</div>
+        <div className="p-3 bg-violet-50/50 border border-violet-100 rounded-lg text-[12.5px] text-slate-700 whitespace-pre-wrap leading-relaxed">
+          {state.content}
+        </div>
+      </div>
+    );
+  }
+
+  // error
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="text-[11px] text-rose-600">{state.message}</div>
+      <button onClick={ask} className="text-[11px] text-sky-600 hover:underline">重试</button>
+    </div>
+  );
+}
