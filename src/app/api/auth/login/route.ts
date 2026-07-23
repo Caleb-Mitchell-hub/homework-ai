@@ -46,6 +46,7 @@ export async function POST(request: Request) {
         id: user.id,
         username: user.username,
         isGuest: user.isGuest,
+        professionId: user.professionId,  // 带上职业,刷新不再显示未选提示
       },
     });
   } catch (error) {

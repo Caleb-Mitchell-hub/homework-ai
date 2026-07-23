@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fetch('/api/auth/me', {
         headers: { 'Authorization': `Bearer ${storedToken}` },
       })
-        .then((res) => {
+        .then(async (res) => {
           if (res.status === 401 || res.status === 403) {
             // 触发 logout 清空本地状态
             setToken(null);
@@ -56,6 +56,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 });
                 window.location.href = '/login';
               }, 50);
+            }
+          } else if (res.ok) {
+            // 同步刷新 user 的 professionId 等字段(可能本地缓存缺)
+            const data = await res.json();
+            const fresh = data?.user;
+            if (fresh && fresh.id) {
+              const merged = { ...JSON.parse(storedUser), ...fresh };
+              setUser(merged);
+              localStorage.setItem('user', JSON.stringify(merged));
+              localStorage.setItem('auth_user', JSON.stringify(merged));
             }
           }
         })
