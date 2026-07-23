@@ -1,5 +1,7 @@
 export type QuestionType = 'single' | 'multiple' | 'boolean' | 'fill' | 'essay' | 'code';
 
+export type Difficulty = '简单' | '中等' | '困难';
+
 export interface BaseQuestion {
   id: string;
   type: QuestionType;
@@ -9,6 +11,8 @@ export interface BaseQuestion {
   analysis?: string;
   /** 题目分值（管理员手动表单带入，可选） */
   score?: number;
+  /** 难度,可选;没有默认'中等' */
+  difficulty?: Difficulty;
 }
 
 export interface SingleQuestion extends BaseQuestion {
