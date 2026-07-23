@@ -20,6 +20,8 @@ model User {
   securityAnswerHash  String?
   /// 职业（用于数据大屏职业统计）
   occupation          String?
+  /// 积分余额（AI 解析、签到等消耗/获得）
+  credits             Int      @default(0)
   lastActiveAt        DateTime?
   createdAt           DateTime @default(now())
   admin               Admin?
@@ -27,6 +29,9 @@ model User {
   results             QuizResult[]
   professionId        String?
   profession          Profession? @relation(fields: [professionId], references: [id])
+  checkIns            DailyCheckIn[]
+  creditLogs          CreditLedger[]
+  explanations        AIExplanation[]
 }
 
 model Admin {
@@ -125,4 +130,49 @@ model AIProviderConfig {
   updatedAt       DateTime @updatedAt
 
   @@index([isActive])
+}
+
+enum CreditReason {
+  signup
+  daily_signin
+  topup
+  admin_adjust
+  ai_explain
+  refund
+}
+
+model CreditLedger {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delta     Int
+  reason    CreditReason
+  refId     String?
+  balance   Int
+  createdAt DateTime     @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model DailyCheckIn {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkInDate  DateTime @db.Date
+  credit       Int      @default(5)
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, checkInDate])
+}
+
+model AIExplanation {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId String
+  costCredit Int
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([userId, questionId])
 }
