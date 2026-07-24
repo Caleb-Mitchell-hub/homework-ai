@@ -45,3 +45,51 @@ export function pickRecordToUpdate<T extends DedupInput>(
   };
 }
 
+// ============ 新版:草稿 upsert + 提交 insert 分离 ============
+
+export interface DraftUpsertInput {
+  userId: string;
+  quizId: string;
+  name: string;
+  score: number;
+  totalScore: number;
+  /** JSON 序列化的 results 数组 */
+  results: string;
+}
+
+/**
+ * 草稿(draft)同 (userId, quizId) 只保留 1 份。
+ * 返回结构化操作指示:调用方根据 operation 字段决定走 prisma.update 还是 prisma.create。
+ * 调用方负责事务。
+ */
+export function buildDraftUpsertData(
+  input: DraftUpsertInput,
+  existingId: string | null
+): { operation: 'update'; where: { id: string }; data: any }
+     | { operation: 'create'; data: any } {
+  if (existingId) {
+    return {
+      operation: 'update',
+      where: { id: existingId },
+      data: {
+        name: input.name,
+        score: input.score,
+        totalScore: input.totalScore,
+        results: input.results,
+      },
+    };
+  }
+  return {
+    operation: 'create',
+    data: {
+      userId: input.userId,
+      quizId: input.quizId,
+      name: input.name,
+      score: input.score,
+      totalScore: input.totalScore,
+      results: input.results,
+      status: 'draft',
+    },
+  };
+}
+
