@@ -42,6 +42,9 @@ export default function QuizPage() {
   const [remainingSec, setRemainingSec] = useState<number | null>(null);
   // 是否已自动提交（避免重复弹窗）
   const autoSubmittedRef = useRef(false);
+  // 5 分钟 / 1 分钟提醒已触发过(避免重复弹)
+  const warned5minRef = useRef(false);
+  const warned1minRef = useRef(false);
 
   const cat = useCategories();
 
@@ -132,6 +135,19 @@ export default function QuizPage() {
   // 倒计时
   useEffect(() => {
     if (remainingSec == null || submitted) return;
+    // 5 分钟提醒(只在原时长 ≥ 6 分钟时提醒)
+    if (
+      quiz?.timeLimit && quiz.timeLimit >= 6 &&
+      remainingSec === 300 && !warned5minRef.current
+    ) {
+      warned5minRef.current = true;
+      showToast('还剩 5 分钟');
+    }
+    // 1 分钟提醒
+    if (remainingSec === 60 && !warned1minRef.current) {
+      warned1minRef.current = true;
+      showToast('还剩 1 分钟，请注意时间');
+    }
     if (remainingSec <= 0) {
       // 时间到 → 自动提交
       if (!autoSubmittedRef.current) {
@@ -145,7 +161,7 @@ export default function QuizPage() {
     const t = setTimeout(() => setRemainingSec((s) => (s == null ? s : s - 1)), 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remainingSec, submitted]);
+  }, [remainingSec, submitted, quiz]);
 
   const handleAnswerChange = (questionId: string, answer: string) => {
     setAnswers(prev => ({ ...prev, [questionId]: answer }));
