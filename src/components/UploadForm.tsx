@@ -67,6 +67,8 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
   const [aiAvailable, setAiAvailable] = useState(false);
   const [aiAvailableResolved, setAiAvailableResolved] = useState(false);
   const [pendingChoiceOpen, setPendingChoiceOpen] = useState(false);
+  // 答题时长(分钟),0 = 不限时
+  const [timeLimit, setTimeLimit] = useState<number>(0);
   const router = useRouter();
   const { token } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -183,7 +185,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
       const res = await fetch('/api/quizzes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title, questions: qs, fileKey }),
+        body: JSON.stringify({ title, questions: qs, fileKey, timeLimit }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -362,7 +364,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ title: manualTitle.trim(), questions: manualQuestions }),
+        body: JSON.stringify({ title: manualTitle.trim(), questions: manualQuestions, timeLimit }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -441,6 +443,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
                       <option value="fill">填空</option>
                       <option value="essay">简答</option>
                       <option value="code">代码</option>
+                      <option value="interview">面试</option>
                     </select>
                     <input
                       type="number"
@@ -590,6 +593,42 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
           >
             手动新增题目
           </button>
+        </div>
+
+        {/* 答题时长(可选) */}
+        <div className="bg-white/80 border border-slate-200 rounded-xl p-4 mb-6">
+          <label className="block text-[13px] font-medium text-slate-700 mb-2">
+            答题时长(可选)
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="0"
+              max="480"
+              value={timeLimit}
+              onChange={(e) => setTimeLimit(Math.max(0, parseInt(e.target.value) || 0))}
+              placeholder="0"
+              className="w-24 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+            />
+            <span className="text-[13px] text-slate-500">分钟</span>
+          </div>
+          <div className="text-[11px] text-slate-400 mt-1">0 = 不限时,1~480 分钟可选</div>
+          <div className="flex gap-2 mt-2">
+            {[10, 20, 30, 60].map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setTimeLimit(m)}
+                className={`px-2 py-1 text-[11px] rounded-md border transition-colors ${
+                  timeLimit === m
+                    ? 'bg-sky-100 border-sky-300 text-sky-700'
+                    : 'bg-white border-slate-200 text-slate-500 hover:border-sky-300'
+                }`}
+              >
+                {m} 分钟
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="mb-6">

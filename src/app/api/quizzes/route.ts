@@ -129,13 +129,16 @@ export async function POST(request: Request) {
 
     await updateUserActiveTime(payload.userId);
 
-    const { title, questions, fileKey, categoryId } = await request.json();
+    const { title, questions, fileKey, categoryId, timeLimit } = await request.json();
 
     if (!title || !questions) {
       return NextResponse.json({ error: '标题和题目不能为空' }, { status: 400 });
     }
 
     const normalizedCategoryId = normalizeCategoryId(categoryId);
+    // 答题时长(分钟):0 = 不限时,1~480
+    const normalizedTimeLimit =
+      typeof timeLimit === 'number' && timeLimit > 0 ? Math.min(480, Math.floor(timeLimit)) : 0;
 
     // 有 fileKey → 先查是否已有同 (userId, fileKey) 的 Quiz
     if (fileKey && typeof fileKey === 'string') {
@@ -171,6 +174,7 @@ export async function POST(request: Request) {
         userId: payload.userId,
         fileKey: fileKey && typeof fileKey === 'string' ? fileKey : null,
         categoryId: normalizedCategoryId,
+        timeLimit: normalizedTimeLimit,
       },
     });
 
