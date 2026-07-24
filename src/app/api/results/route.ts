@@ -2,7 +2,52 @@ import { NextResponse } from 'next/server';
 import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { verifyAdminToken } from '@/lib/admin-auth';
 import { prisma } from '@/lib/prisma';
-import { pickRecordToUpdate } from '@/lib/results-dedup';
+import { buildDraftUpsertData } from '@/lib/results-dedup';
+import { callChat } from '@/lib/ai/providers';
+import { decryptApiKey } from '@/lib/ai/crypto';
+import { buildGradingPrompt } from '@/lib/ai/grading-prompt';
+
+/**
+ * 给一道主观题调 AI 拿评语(aiComment)。失败一律降级为 undefined,
+ * 不影响结果保存(单题/整体失败均不影响)。
+ */
+async function gradeOneQuestion(
+  q: any,
+  userAnswer: string,
+  refAnswer: string,
+): Promise<string | undefined> {
+  try {
+    const prompt = buildGradingPrompt({
+      questionContent: q.title ?? '',
+      questionType: q.type,
+      referenceAnswer: refAnswer,
+      userAnswer,
+      language: q.language,
+    });
+    const provider = await prisma.aIProviderConfig.findFirst({
+      where: { isActive: true },
+    });
+    if (!provider) return undefined;
+    const apiKey = decryptApiKey(provider.apiKeyCipher);
+    const content = await callChat({
+      baseURL: provider.baseURL,
+      apiKey,
+      model: provider.model,
+      messages: [{ role: 'system', content: prompt }],
+      jsonMode: true,
+      maxTokens: 800,
+      temperature: 0.4,
+    });
+    try {
+      const parsed = JSON.parse(content);
+      return typeof parsed.comment === 'string' ? parsed.comment : undefined;
+    } catch {
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * 解析请求中的 token —— 同时支持普通用户 token 和管理员 token。
@@ -107,52 +152,74 @@ export async function POST(request: Request) {
       return { ...r, results: arr };
     };
 
-    // 探测当前 (user, quiz) 下的所有记录(草稿 + 已提交)
-    // —— 一份题库对一个用户只保留一条,旧版本只看 draft 导致
-    // 提交过的题库再次提交时无 draft → 直接 create → N 条记录。
-    const existingList = await prisma.quizResult.findMany({
-      where: {
-        userId: payload.userId,
-        quizId,
-      },
-    });
-
-    const decision = pickRecordToUpdate(existingList);
-
-    // 清掉重复的旧记录(每个 user+quiz 仅留最新一条,顺手清理历史脏数据)
-    if (decision && decision.drop.length > 0) {
-      await prisma.quizResult.deleteMany({
-        where: { id: { in: decision.drop.map((r) => r.id) } },
-      });
-    }
-
+    // 拆分 dedup:
+    //  - draft  → 同一份草稿 upsert(同 user+quiz 仅 1 份)
+    //  - submitted → 直接 insert 新行,允许 N 份历史;同时给主观题调 AI 拿 aiComment
     let result: any;
+    let enrichedResults: any[] = answerResults;
 
-    if (decision) {
-      // 更新保留的那条(草稿升级为已提交 / 暂存 / 重新提交 都走这里)
-      result = await prisma.quizResult.update({
-        where: { id: decision.keep.id },
-        data: {
-          name: name || decision.keep.name,
-          score,
-          totalScore,
-          results: JSON.stringify(answerResults),
-          status: status || decision.keep.status,
-          // 提交时刷新 submittedAt,纯暂存保持原值
-          ...(status === 'submitted' ? { submittedAt: new Date() } : {}),
+    if (status === 'draft') {
+      // 草稿 upsert:有则 update / 无则 create
+      const existingDraft = await prisma.quizResult.findFirst({
+        where: {
+          userId: payload.userId,
+          quizId,
+          status: 'draft',
         },
       });
-    } else {
-      // 首次创建
-      result = await prisma.quizResult.create({
-        data: {
-          quizId,
+      const upsert = buildDraftUpsertData(
+        {
           userId: payload.userId,
+          quizId,
           name: name || '未命名',
           score,
           totalScore,
           results: JSON.stringify(answerResults),
-          status: status || 'submitted',
+        },
+        existingDraft?.id ?? null,
+      );
+      result =
+        upsert.operation === 'update'
+          ? await prisma.quizResult.update({
+              where: upsert.where,
+              data: upsert.data,
+            })
+          : await prisma.quizResult.create({ data: upsert.data });
+    } else {
+      // submitted:AI 批阅 + 直接 create 新行(允许 N 份历史)
+      const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
+      let questions: any[] = [];
+      try {
+        questions = JSON.parse(quiz?.questions ?? '[]');
+      } catch {
+        questions = [];
+      }
+
+      enrichedResults = await Promise.all(
+        (answerResults as any[]).map(async (r: any) => {
+          const q = questions.find((qq: any) => qq.id === r.questionId);
+          if (!q || !['essay', 'code', 'interview'].includes(q.type)) {
+            return r;
+          }
+          const refAnswer =
+            q.type === 'essay' || q.type === 'interview'
+              ? q.referenceAnswer ?? ''
+              : '';
+          const comment = await gradeOneQuestion(q, r.userAnswer ?? '', refAnswer);
+          return comment ? { ...r, aiComment: comment } : r;
+        }),
+      );
+
+      result = await prisma.quizResult.create({
+        data: {
+          userId: payload.userId,
+          quizId,
+          name: name || '未命名',
+          score,
+          totalScore,
+          results: JSON.stringify(enrichedResults),
+          status: 'submitted',
+          submittedAt: new Date(),
         },
       });
     }
