@@ -11,6 +11,8 @@ import ResultCard from '@/components/ResultCard';
 import AnswerSheet from '@/components/AnswerSheet';
 import CategorySelect from '@/components/CategorySelect';
 import Toast from '@/components/Toast';
+import QuizSidebar from '@/components/QuizSidebar';
+import HistorySwitcher from '@/components/HistorySwitcher';
 
 export default function QuizPage() {
   const params = useParams();
@@ -390,7 +392,7 @@ export default function QuizPage() {
 
   return (
     <div className="w-full min-h-screen pb-24">
-      <div className="px-4 py-8 max-w-4xl mx-auto">
+      <div className="px-4 py-8 max-w-7xl mx-auto">
         {/* ★ Sticky 顶部(高度 ≤ 视口 15%)：紧凑单行 [返回+标题] · [倒计时] · [进度+已答/总题数] */}
         <div className="sticky top-0 z-10 -mx-4 px-4 pt-2 pb-2.5 bg-gradient-to-b from-sky-50/95 via-sky-50/80 to-white/0 backdrop-blur-sm">
           {/* 单行：返回+标题  |  倒计时  |  进度 */}
@@ -434,6 +436,29 @@ export default function QuizPage() {
               </span>
             )}
 
+            {/* 历史切换器(在有 ≥1 份 submitted 时显示) */}
+            <HistorySwitcher
+              quizId={quiz.id}
+              onSelect={async (item) => {
+                const res = await fetch(`/api/results?quizId=${quiz.id}`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await res.json();
+                const target = (data.results ?? []).find((r: any) => r.id === item.id);
+                if (target) {
+                  if (typeof target.results === 'string') {
+                    try {
+                      target.results = JSON.parse(target.results);
+                    } catch {
+                      target.results = [];
+                    }
+                  }
+                  setResult(target);
+                  setSubmitted(true);
+                }
+              }}
+            />
+
             {/* 进度环：X / Y · 进度条 */}
             <div className="flex-shrink-0 flex items-center gap-1.5">
               <div
@@ -476,16 +501,20 @@ export default function QuizPage() {
           )}
         </div>
 
-        <div className="space-y-4">
-          {quiz.questions.map((q: Question, i: number) => (
-            <QuestionCard
-              key={q.id}
-              question={q}
-              index={i}
-              userAnswer={answers[q.id] || ''}
-              onChange={handleAnswerChange}
-            />
-          ))}
+        <div className="mt-4 flex gap-6 items-start">
+          <div className="flex-1 min-w-0 space-y-4">
+            {quiz.questions.map((q: Question, i: number) => (
+              <QuestionCard
+                key={q.id}
+                question={q}
+                index={i}
+                userAnswer={answers[q.id] || ''}
+                onChange={handleAnswerChange}
+              />
+            ))}
+          </div>
+
+          <QuizSidebar questions={quiz.questions} answers={answers} />
         </div>
       </div>
 
