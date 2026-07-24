@@ -56,6 +56,7 @@ export function checkAnswer(question: Question, userAnswer: string): CheckResult
       return { ...base, correct: false, score: 0, autoGraded: false };
 
     case 'code':
+    case 'interview':
       return { ...base, correct: false, score: 0, autoGraded: false };
 
     default:
@@ -73,6 +74,8 @@ export function gradeQuiz(questions: Question[], answers: Answer[]): QuizResult 
     const userAnswer = answer?.answer || '';
     const result = checkAnswer(question, userAnswer);
     results.push(result);
+    // 客观题 result.score 是 0/1,主观题始终 0。
+    // 主观题 manualScore 在 Admin 改分时由 /api/admin/results/[id]/grade 重算并写入。
     totalScore += result.score;
   }
 
