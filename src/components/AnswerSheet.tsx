@@ -9,6 +9,8 @@ import {
   getReferenceAnswer,
 } from '@/lib/answer-sheet-helpers';
 import AIExplainPanel from '@/components/AIExplainPanel';
+import AIFollowUp from '@/components/AIFollowUp';
+import MarkdownView from '@/components/MarkdownView';
 import { useAuth } from '@/contexts/AuthContext';
 
 const typeNames: Record<string, string> = {
@@ -18,6 +20,7 @@ const typeNames: Record<string, string> = {
   fill: '填空题',
   essay: '简答题',
   code: '代码题',
+  interview: '面试题',
 };
 
 /**
@@ -32,6 +35,8 @@ const typeNames: Record<string, string> = {
 export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: QuizResult }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [allOpen, setAllOpen] = useState(false);
+  // 记录每道题的 AI 解析内容，供追问上下文使用
+  const [explainContents, setExplainContents] = useState<Record<string, string>>({});
   const { token } = useAuth();
 
   const toggle = (id: string) => {
@@ -210,7 +215,7 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                                 <span className="w-5 h-5 rounded-full border border-current/30 flex items-center justify-center text-[11px] font-bold flex-shrink-0">
                                   {letter}
                                 </span>
-                                <span className="flex-1">{opt}</span>
+                                <span className="flex-1 min-w-0"><MarkdownView content={opt} size="base" /></span>
                                 {badge}
                               </li>
                             );
@@ -328,8 +333,8 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                         </Highlight>
                       ) : (
                         // 简答题/其他题：白底纯文本
-                        <div className="text-[13px] leading-relaxed whitespace-pre-wrap text-slate-700 px-3 py-2 rounded-lg bg-emerald-50/50 border border-emerald-100">
-                          {refAnswer}
+                        <div className="text-[13px] leading-relaxed text-slate-700 px-3 py-2 rounded-lg bg-emerald-50/50 border border-emerald-100">
+                          <MarkdownView content={refAnswer} size="base" />
                         </div>
                       )
                     ) : (
@@ -351,9 +356,23 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                           alert(`积分不足: 需要 ${req} 积分, 当前 ${bal} 积分。请前往 /credits 充值`);
                           window.location.href = '/credits';
                         }}
+                        onDone={(content) => {
+                          setExplainContents((prev) => ({ ...prev, [q.id]: content }));
+                        }}
                       />
                     </div>
                   )}
+
+                  {/* 追问入口 - 所有题型都可追问 */}
+                  <div className="pt-2 border-t border-slate-200/60">
+                    <AIFollowUp
+                      questionId={q.id}
+                      questionContent={q.title}
+                      questionType={q.type}
+                      answer={refAnswer}
+                      aiExplanation={explainContents[q.id]}
+                    />
+                  </div>
                 </div>
               )}
             </li>

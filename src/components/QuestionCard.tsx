@@ -1,7 +1,9 @@
 'use client';
 
 import { Highlight, themes } from 'prism-react-renderer';
-import { Question, SingleQuestion, MultipleQuestion, BooleanQuestion, FillQuestion, EssayQuestion, CodeQuestion } from '@/types';
+import { Question, SingleQuestion, MultipleQuestion, BooleanQuestion, FillQuestion, EssayQuestion, CodeQuestion, InterviewQuestion } from '@/types';
+import MarkdownView from '@/components/MarkdownView';
+import AIFollowUp from '@/components/AIFollowUp';
 
 interface Props {
   question: Question;
@@ -17,7 +19,8 @@ const typeColors: Record<Question['type'], { bg: string; text: string; border: s
   boolean: { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' },
   fill: { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200' },
   essay: { bg: 'bg-pink-50', text: 'text-pink-600', border: 'border-pink-200' },
-  code: { bg: 'bg-cyan-50', text: 'text-cyan-600', border: 'border-cyan-200' }
+  code: { bg: 'bg-cyan-50', text: 'text-cyan-600', border: 'border-cyan-200' },
+  interview: { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200' }
 };
 
 const typeLabels: Record<Question['type'], string> = {
@@ -26,7 +29,8 @@ const typeLabels: Record<Question['type'], string> = {
   boolean: '判断题',
   fill: '填空题',
   essay: '简答题',
-  code: '代码题'
+  code: '代码题',
+  interview: '面试题'
 };
 
 export default function QuestionCard({ question, index, userAnswer, onChange, showResult }: Props) {
@@ -55,7 +59,7 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
                   }`}>
                     {letter}
                   </span>
-                  <span className="flex-1 text-slate-700">{opt}</span>
+                  <span className="flex-1 text-slate-700"><MarkdownView content={opt} size="base" /></span>
                   <input
                     type="radio"
                     name={question.id}
@@ -94,7 +98,7 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
                   }`}>
                     {letter}
                   </span>
-                  <span className="flex-1 text-slate-700">{opt}</span>
+                  <span className="flex-1 text-slate-700"><MarkdownView content={opt} size="base" /></span>
                   <input
                     type="checkbox"
                     value={letter}
@@ -181,6 +185,36 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
           />
         );
 
+      case 'interview': {
+        const q = question as InterviewQuestion;
+        return (
+          <div className="space-y-3">
+            {Array.isArray(q.subQuestions) && q.subQuestions.length > 0 && (
+              <div className="bg-indigo-50/40 border border-indigo-100 rounded-xl p-3">
+                <div className="text-[10.5px] tracking-[0.2em] uppercase text-indigo-400 mb-2">
+                  📋 面试要点
+                </div>
+                <ol className="space-y-1.5 list-decimal list-inside text-[13px] text-slate-700">
+                  {q.subQuestions.map((sub, i) => (
+                    <li key={i} className="leading-relaxed">
+                      <MarkdownView content={sub} size="base" />
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            <textarea
+              value={userAnswer}
+              onChange={(e) => onChange(question.id, e.target.value)}
+              disabled={showResult}
+              rows={6}
+              placeholder="请写下你的思路 / 经验 / 代码示例…"
+              className="w-full p-4 bg-white border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 resize-none"
+            />
+          </div>
+        );
+      }
+
       case 'code': {
         const q = question as CodeQuestion;
         return (
@@ -260,7 +294,10 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
   };
 
   return (
-    <div className={`border ${colors.border} rounded-2xl p-6 mb-6 bg-white/80 shadow-sm`}>
+    <div
+      id={`q-${question.id}`}
+      className={`border ${colors.border} rounded-2xl p-6 mb-6 bg-white/80 shadow-sm`}
+    >
       <div className="flex items-start justify-between mb-5">
         <div className="flex items-center gap-3">
           <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-emerald-400 flex items-center justify-center text-white font-bold shadow-sm">
@@ -279,13 +316,24 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
         )}
       </div>
 
-      <div className="mb-6 text-slate-800 text-lg leading-relaxed whitespace-pre-wrap text-left">
-        {question.title}
+      <div className="mb-6 text-slate-800 text-left">
+        <MarkdownView content={question.title} size="lg" />
       </div>
 
       {renderInput()}
 
-      {showResult && question.type !== 'code' && question.type !== 'essay' && (
+      {showResult && question.type === 'interview' && (question as InterviewQuestion).referenceAnswer && (
+        <div className="mt-5 p-4 bg-indigo-50/50 rounded-xl border border-indigo-200">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-indigo-600 font-medium">💡 参考思路</span>
+          </div>
+          <div className="text-slate-700">
+            <MarkdownView content={(question as InterviewQuestion).referenceAnswer} size="base" />
+          </div>
+        </div>
+      )}
+
+      {showResult && question.type !== 'code' && question.type !== 'essay' && question.type !== 'interview' && (
         <div className="mt-5 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
           <div className="flex items-center gap-2 mb-2">
             <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -293,9 +341,20 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
             </svg>
             <span className="text-emerald-600 font-medium">正确答案</span>
           </div>
-          <span className="text-slate-700">{question.answer}</span>
+          <div className="text-slate-700">
+            <MarkdownView content={String(question.answer)} size="base" />
+          </div>
         </div>
       )}
+
+      {/* 追问入口 */}
+      <div className="mt-4 pt-3 border-t border-slate-100">
+        <AIFollowUp
+          questionId={question.id}
+          questionContent={question.title}
+          questionType={question.type}
+        />
+      </div>
     </div>
   );
 }
