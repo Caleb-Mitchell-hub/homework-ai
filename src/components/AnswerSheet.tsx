@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Highlight, themes } from 'prism-react-renderer';
 import { Quiz, QuizResult } from '@/types';
 import {
@@ -33,6 +34,7 @@ const typeNames: Record<string, string> = {
  * - 顶部"全部展开 / 全部收起"快捷
  */
 export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: QuizResult }) {
+  const router = useRouter();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [allOpen, setAllOpen] = useState(false);
   // 记录每道题的 AI 解析内容，供追问上下文使用
@@ -73,6 +75,14 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
         >
           {allOpen ? '全部收起' : '全部展开'}
         </button>
+        {result?.id && (
+          <button
+            onClick={() => router.push(`/result/${result.id}/report`)}
+            className="text-[11px] text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded border border-emerald-200 hover:border-emerald-300 bg-emerald-50/50 transition-colors"
+          >
+            📊 查看报告
+          </button>
+        )}
       </div>
 
       <ul className="space-y-2.5">
