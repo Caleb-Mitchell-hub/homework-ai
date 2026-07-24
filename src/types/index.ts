@@ -1,4 +1,4 @@
-export type QuestionType = 'single' | 'multiple' | 'boolean' | 'fill' | 'essay' | 'code';
+export type QuestionType = 'single' | 'multiple' | 'boolean' | 'fill' | 'essay' | 'code' | 'interview';
 
 export type Difficulty = '简单' | '中等' | '困难';
 
@@ -51,7 +51,20 @@ export interface CodeQuestion extends BaseQuestion {
   outputExample: string;
 }
 
-export type Question = SingleQuestion | MultipleQuestion | BooleanQuestion | FillQuestion | EssayQuestion | CodeQuestion;
+/**
+ * 面试题: 主观表达题,通常包含多个要点/场景问题
+ * - 不强制单一答案,有参考答案作参考
+ * - 默认按"已作答"计分,真实评判交给面试官
+ */
+export interface InterviewQuestion extends BaseQuestion {
+  type: 'interview';
+  /** 面试要点提示 (markdown 格式,展示给用户/面试官) */
+  referenceAnswer: string;
+  /** 子问题列表 (可选,展示为"问 1/2/3") */
+  subQuestions?: string[];
+}
+
+export type Question = SingleQuestion | MultipleQuestion | BooleanQuestion | FillQuestion | EssayQuestion | CodeQuestion | InterviewQuestion;
 
 export interface Quiz {
   id: string;
@@ -74,6 +87,8 @@ export interface Answer {
 }
 
 export interface QuizResult {
+  /** 服务端 QuizResult.id,前端有时候拿不到;详情页/报告页用 */
+  id?: string;
   quizId: string;
   name: string;
   status: 'draft' | 'submitted';
@@ -86,6 +101,16 @@ export interface QuizResult {
     correctAnswer: string;
     userAnswer: string;
     autoGraded: boolean;
+    /** AI 自动批评语 */
+    aiComment?: string;
+    /** 人工分数 0~1 */
+    manualScore?: number;
+    /** 人工评语 */
+    manualComment?: string;
+    /** 批阅人 admin userId */
+    manualGradedBy?: string;
+    /** 批阅时间 ISO */
+    manualGradedAt?: string;
   }[];
   submittedAt: number;
 }

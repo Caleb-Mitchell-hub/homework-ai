@@ -11,6 +11,7 @@ import {
 } from '@/lib/answer-sheet-helpers';
 import AIExplainPanel from '@/components/AIExplainPanel';
 import AIFollowUp from '@/components/AIFollowUp';
+import ManualGradePanel from '@/components/ManualGradePanel';
 import MarkdownView from '@/components/MarkdownView';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -371,6 +372,24 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                         }}
                       />
                     </div>
+                  )}
+
+                  {/* 人工批阅 - 仅主观题 */}
+                  {(q.type === 'essay' || q.type === 'code' || q.type === 'interview') && result?.id && (
+                    <ManualGradePanel
+                      resultId={result.id}
+                      questionId={q.id}
+                      item={{
+                        questionId: q.id,
+                        userAnswer,
+                        correct: !!correct,
+                        autoGraded: false,
+                        manualScore: r?.manualScore,
+                        manualComment: r?.manualComment,
+                        manualGradedBy: r?.manualGradedBy,
+                        manualGradedAt: r?.manualGradedAt,
+                      }}
+                    />
                   )}
 
                   {/* 追问入口 - 所有题型都可追问 */}

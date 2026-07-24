@@ -63,7 +63,7 @@ describe('POST /api/admin/results/[id]/grade', () => {
     await POST(req as any, { params: Promise.resolve({ id: 'r1' }) });
 
     expect(prisma.quizResult.update).toHaveBeenCalled();
-    const updateArg = vi.mocked(prisma.quizResult.update).mock.calls[0][0];
+    const updateArg = vi.mocked(prisma.quizResult.update).mock.calls[0][0] as any;
     const parsed = JSON.parse(updateArg.data.results);
     expect(parsed[0].manualScore).toBe(1);
     expect(parsed[0].manualComment).toBe('good');
@@ -88,7 +88,7 @@ describe('POST /api/admin/results/[id]/grade', () => {
     const req = buildReq({ questionId: 'q6', manualScore: 0.8, manualComment: 'good' });
     await POST(req as any, { params: Promise.resolve({ id: 'r1' }) });
 
-    const updateArg = vi.mocked(prisma.quizResult.update).mock.calls[0][0];
+    const updateArg = vi.mocked(prisma.quizResult.update).mock.calls[0][0] as any;
     expect(updateArg.data.score).toBe(5.8);
     expect(updateArg.data.totalScore).toBe(6);
   });
@@ -107,7 +107,7 @@ describe('POST /api/admin/results/[id]/grade', () => {
     const req = buildReq({ questionId: 'q1', manualScore: null });
     await POST(req as any, { params: Promise.resolve({ id: 'r1' }) });
 
-    const updateArg = vi.mocked(prisma.quizResult.update).mock.calls[0][0];
+    const updateArg = vi.mocked(prisma.quizResult.update).mock.calls[0][0] as any;
     const parsed = JSON.parse(updateArg.data.results);
     expect(parsed[0].manualScore).toBeUndefined();
     expect(updateArg.data.score).toBe(0);
