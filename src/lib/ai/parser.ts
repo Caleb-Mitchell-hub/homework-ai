@@ -16,19 +16,38 @@ interface ProviderLike {
 
 const MAX_TEXT_CHARS = 60_000;
 const RETRYABLE = 1;
+/** 流式模式下估算 1 token ≈ 3.5 chars (中英混合偏低) */
+const CHARS_PER_TOKEN_ESTIMATE = 3.5;
+/** 流式进度上报间隔:每收到 N 字符上报一次 */
+const PROGRESS_REPORT_INTERVAL_CHARS = 400;
 
 function stripCodeFence(s: string): string {
-  const m = s.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (m) return m[1].trim();
-  return s.trim();
+  const t = s.trim();
+  if (t.startsWith('```') && t.endsWith('```')) {
+    const start = t.indexOf('\n');
+    const content = start >= 0 ? t.slice(start + 1) : t.slice(3);
+    return content.slice(0, content.lastIndexOf('```')).trim();
+  }
+  return t;
 }
 
 /**
  * 容错修复:AI 输出 JSON 可能在末尾被截断(达到 token 上限)。
- * 尝试找到最后一个 '}' 之前的位置截断,并补上 ']'
- * 返回修复后的字符串,失败返回 null
+ * 尝试找到最后一个 '}' 之前的位置截断,并补上 ']}'
  */
 function tryRepairTruncatedJson(s: string): string | null {
+  const objStart = s.indexOf('{"questions"');
+  if (objStart >= 0) {
+    for (let i = s.length - 1; i > objStart; i--) {
+      if (s[i] === '}') {
+        const candidate = s.slice(objStart, i + 1) + '}';
+        try {
+          const parsed = JSON.parse(candidate);
+          if (parsed && typeof parsed === 'object' && Array.isArray(parsed.questions) && parsed.questions.length > 0) return candidate;
+        } catch { /* continue */ }
+      }
+    }
+  }
   const start = s.indexOf('[');
   if (start < 0) return null;
   for (let i = s.length - 1; i > start; i--) {
@@ -37,9 +56,7 @@ function tryRepairTruncatedJson(s: string): string | null {
       try {
         const arr = JSON.parse(candidate);
         if (Array.isArray(arr) && arr.length > 0) return candidate;
-      } catch {
-        // 继续往前找
-      }
+      } catch { /* continue */ }
     }
   }
   return null;
@@ -49,116 +66,136 @@ function genId(): string {
   return 'q_' + Math.random().toString(36).slice(2, 10);
 }
 
-/**
- * 流式 AI 解析:逐 chunk 返回 AI 输出片段 + 实时进度。
- * 调用方拿到完整 JSON 字符串后做 normalize。
- */
 export interface ParseProgressEvent {
-  /** 0-100 的进度估算 */
   progress: number;
-  /** 当前阶段文案 */
   message: string;
-  /** 当前累计收到的字符数 */
   receivedChars: number;
-  /** 估算的 AI 响应总字符数 (基于 maxTokens 推算) */
   expectedChars?: number;
 }
 
+/**
+ * 解析 JSON 并提取 questions 数组。失败返回 null。
+ */
+type Loose = Record<string, any>;
+
+function extractQuestions(rawContent: string): Loose[] | null {
+  const json = stripCodeFence(rawContent);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    const fixed = tryRepairTruncatedJson(json);
+    if (!fixed) return null;
+    try { parsed = JSON.parse(fixed); } catch { return null; }
+  }
+  const arr: unknown = (parsed && typeof parsed === 'object' && 'questions' in (parsed as Record<string, unknown>))
+    ? (parsed as Record<string, unknown>).questions
+    : parsed;
+  return Array.isArray(arr) ? arr : null;
+}
+
+/**
+ * 流式 AI 解析:优先使用 SSE streaming 获取实时字符进度,
+ * 失败时自动回退到非流式调用。
+ */
 export async function* aiParseQuestionsStream(opts: {
   text: string;
   provider: ProviderLike;
   signal?: AbortSignal;
-  /** 估算的输出 token 数,用于进度条(默认 8000) */
   estimatedOutputTokens?: number;
-}): AsyncGenerator<{ type: 'progress'; data: ParseProgressEvent } | { type: 'complete'; questions: Question[] } | { type: 'error'; error: string }> {
+}): AsyncGenerator<
+  | { type: 'progress'; data: ParseProgressEvent }
+  | { type: 'complete'; questions: Question[] }
+  | { type: 'error'; error: string }
+> {
   const apiKey = decryptApiKey(opts.provider.apiKeyCipher);
   const text = opts.text.slice(0, MAX_TEXT_CHARS);
-
-  // 粗略估算 AI 总输出字符数(中文 1 字 ≈ 1.5 token,英文 1 字 ≈ 0.25 token)
-  // 这里保守用 max_tokens 作为 expectedChars 上限
-  const maxTokens = 16000;
-  const expectedChars = Math.floor(opts.estimatedOutputTokens ?? maxTokens * 0.75);
-
-  let acc = '';
-  let lastYieldedProgress = 0;
-
-  yield {
-    type: 'progress',
-    data: { progress: 5, message: '正在调用 AI 厂商...', receivedChars: 0, expectedChars },
+  const maxTokens = opts.estimatedOutputTokens ?? 8000;
+  const chatOpts = {
+    baseURL: opts.provider.baseURL,
+    apiKey,
+    model: opts.provider.model,
+    messages: [
+      { role: 'system' as const, content: QUESTION_PARSE_PROMPT },
+      { role: 'user' as const, content: text },
+    ],
+    maxTokens,
+    signal: opts.signal,
   };
 
-  let streamError: unknown = null;
+  yield { type: 'progress', data: { progress: 5, message: '正在准备...', receivedChars: 0 } };
+  if (opts.signal?.aborted) return;
+
+  // ── 优先流式调用 (实时字符进度) ──
+  let rawContent = '';
+  let streamed = false;
+  const expectedChars = Math.round(maxTokens * CHARS_PER_TOKEN_ESTIMATE);
+  let lastReportedChars = 0;
+
   try {
-    for await (const chunk of callChatStream({
-      baseURL: opts.provider.baseURL,
-      apiKey,
-      model: opts.provider.model,
-      messages: [
-        { role: 'system', content: QUESTION_PARSE_PROMPT },
-        { role: 'user', content: text },
-      ],
-      jsonMode: true,
-      signal: opts.signal,
-    })) {
+    yield { type: 'progress', data: { progress: 8, message: 'AI 正在解析题目...', receivedChars: 0, expectedChars } };
+
+    for await (const chunk of callChatStream({ ...chatOpts, jsonMode: true })) {
       if (opts.signal?.aborted) return;
-      acc += chunk.delta;
-      // 进度 30% ~ 88% 映射到字符数
-      const ratio = Math.min(1, acc.length / expectedChars);
-      const progress = Math.floor(30 + ratio * 58); // 30 → 88
-      // 节流:每 1% 才上报一次,避免高频
-      if (progress - lastYieldedProgress >= 1 || progress === 88) {
-        lastYieldedProgress = progress;
+      if (chunk.done) break;
+      rawContent += chunk.delta;
+      const charCount = rawContent.length;
+      // 节流:每 N 字符上报一次进度 (10%→85% 映射到字符进度)
+      if (charCount - lastReportedChars >= PROGRESS_REPORT_INTERVAL_CHARS) {
+        lastReportedChars = charCount;
+        const pct = Math.min(85, 10 + Math.round((charCount / expectedChars) * 75));
         yield {
           type: 'progress',
-          data: {
-            progress,
-            message: `AI 输出中 (${acc.length}/${expectedChars} 字符)`,
-            receivedChars: acc.length,
-            expectedChars,
-          },
+          data: { progress: pct, message: `AI 正在解析... (${charCount} 字符)`, receivedChars: charCount, expectedChars },
         };
       }
     }
-  } catch (err) {
-    streamError = err;
+    streamed = true;
+  } catch (streamErr) {
+    // 流式失败 → 回退到非流式
+    if (opts.signal?.aborted) return;
+    const msg = streamErr instanceof Error ? streamErr.message : String(streamErr);
+    yield {
+      type: 'progress',
+      data: { progress: 12, message: `流式传输失败(${msg.slice(0, 60)})，切换普通模式...`, receivedChars: 0 },
+    };
   }
 
-  if (streamError) {
-    const msg = streamError instanceof Error ? streamError.message : String(streamError);
-    yield { type: 'error', error: `AI 调用失败: ${msg.slice(0, 200)}` };
-    return;
-  }
-
-  yield {
-    type: 'progress',
-    data: { progress: 90, message: '规范化题目...', receivedChars: acc.length, expectedChars },
-  };
-
-  const json = stripCodeFence(acc);
-  let arr: unknown;
-  try {
-    arr = JSON.parse(json);
-  } catch (parseErr) {
-    const fixed = tryRepairTruncatedJson(json);
-    if (fixed) {
-      arr = JSON.parse(fixed);
-    } else {
-      const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-      yield { type: 'error', error: `JSON 解析失败: ${msg.slice(0, 200)}` };
+  // ── 非流式回退 ──
+  if (!streamed) {
+    try {
+      rawContent = await callChat({ ...chatOpts, jsonMode: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      yield { type: 'error', error: `AI 调用失败: ${msg.slice(0, 200)}` };
       return;
     }
   }
 
-  if (!Array.isArray(arr)) {
-    yield { type: 'error', error: 'AI 返回不是数组' };
+  if (opts.signal?.aborted) return;
+
+  yield {
+    type: 'progress',
+    data: { progress: 88, message: `AI 已响应 (${rawContent.length} 字符)，正在解析...`, receivedChars: rawContent.length },
+  };
+
+  // ── 解析 JSON → 规范化 ──
+  const arr = extractQuestions(rawContent);
+  if (!arr) {
+    const head500 = rawContent.slice(0, 500).replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+    const tail200 = rawContent.slice(-200).replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+    const isJsonLike = rawContent.trim().startsWith('{') || rawContent.trim().startsWith('[');
+    yield { type: 'error', error: `JSON解析失败(${rawContent.length}chars,isJson=${isJsonLike}) | HEAD:${head500} | TAIL:${tail200}` };
     return;
   }
 
-  const questions = normalizeAIOutputToQuestions(arr, genId);
   yield {
-    type: 'complete',
-    questions,
+    type: 'progress',
+    data: { progress: 93, message: '规范化题目...', receivedChars: rawContent.length },
   };
+
+  const questions = normalizeAIOutputToQuestions(arr, genId);
+  yield { type: 'complete', questions };
 }
 
 export async function aiParseQuestions(opts: {
@@ -182,26 +219,13 @@ export async function aiParseQuestions(opts: {
         ],
         jsonMode: true,
         signal: opts.signal,
+        maxTokens: 8000,
       });
-      const json = stripCodeFence(content);
-      // 容错:若 JSON.parse 失败,尝试用简单启发式修复(移除尾部不完整内容)
-      let arr: unknown;
-      try {
-        arr = JSON.parse(json);
-      } catch (parseErr) {
-        // 启发式:找到最后一个完整的数组项边界 '},' 或 '}]'
-        const fixed = tryRepairTruncatedJson(json);
-        if (fixed) {
-          arr = JSON.parse(fixed);
-        } else {
-          throw parseErr;
-        }
-      }
-      if (!Array.isArray(arr)) throw new Error('AI 返回不是数组');
+      const arr = extractQuestions(content);
+      if (!arr) throw new Error('AI 返回不是数组');
       return normalizeAIOutputToQuestions(arr, genId);
     } catch (err) {
       lastErr = err;
-      // 非最后一次尝试则重试
     }
   }
   throw new Error(`AI 解析失败(已重试 ${RETRYABLE} 次): ${(lastErr as Error).message}`);

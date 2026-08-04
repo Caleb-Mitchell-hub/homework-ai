@@ -63,18 +63,16 @@ export async function POST(req: NextRequest) {
         send({ progress: 5, message: '正在准备...' });
 
         if (mode === 'local') {
-          send({ progress: 30, message: '正在解析 Markdown...' });
-          if (req.signal.aborted) throw new Error('aborted');
+          // 本地解析是同步的,合并步骤减少不必要的网络往返
           let localText = text;
           if (localText.length > MAX_TEXT_CHARS) {
-            send({ progress: 40, message: `文本超过 ${MAX_TEXT_CHARS} 字符,已截断`, warning: `文本超过 ${MAX_TEXT_CHARS} 字符,已截断` });
+            send({ progress: 40, message: `文本超过 ${MAX_TEXT_CHARS} 字符,已截断` });
             localText = localText.slice(0, MAX_TEXT_CHARS);
           }
           const raw = parseMarkdown(localText);
-          send({ progress: 85, message: '规范化题目...' });
           if (req.signal.aborted) throw new Error('aborted');
           const questions = normalizeAIOutputToQuestions(raw, genId);
-          send({ progress: 100, message: '解析完成', questions });
+          send({ progress: 100, message: `解析完成，共 ${questions.length} 题`, questions });
         } else {
           // 选 provider: 指定 id > 激活
           let provider;
