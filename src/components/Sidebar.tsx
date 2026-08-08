@@ -550,10 +550,7 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
             username={user.username}
             isGuest={user.isGuest}
             tone={TONE_KEY}
-            onClick={() => {
-              onClose();
-              router.push('/settings');
-            }}
+            onClick={() => setSettingsOpen(true)}
           />
         ) : (
           <SignInButton tone={TONE_KEY} onClick={() => router.push('/login')} />

@@ -20,6 +20,18 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: '游客账号不支持此操作，请先注册' }, { status: 403 });
     }
 
+    // 检查账号是否被停用
+    const currentUser = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { disabled: true },
+    });
+    if (!currentUser) {
+      return NextResponse.json({ error: '用户不存在' }, { status: 404 });
+    }
+    if (currentUser.disabled) {
+      return NextResponse.json({ error: '账号已被停用' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { username, occupation } = body || {};
 

@@ -34,13 +34,16 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: '新密码不能与当前密码相同' }, { status: 400 });
     }
 
-    // 获取当前用户密码哈希
+    // 获取当前用户密码哈希与停用状态
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { password: true },
+      select: { password: true, disabled: true },
     });
     if (!user) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 });
+    }
+    if (user.disabled) {
+      return NextResponse.json({ error: '账号已被停用' }, { status: 403 });
     }
 
     // 验证旧密码
