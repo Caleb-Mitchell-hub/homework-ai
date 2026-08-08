@@ -23,6 +23,8 @@ export async function GET(request: Request) {
         disabled: true,
         createdAt: true,
         professionId: true,
+        occupation: true,
+        securityQuestion: true,
         profession: { select: { id: true, name: true } },
       },
     });
@@ -44,6 +46,8 @@ export async function GET(request: Request) {
         createdAt: user.createdAt,
         professionId: user.professionId ?? null,
         professionName: user.profession?.name ?? null,
+        occupation: user.occupation ?? null,
+        securityQuestion: user.securityQuestion ?? null,
       },
     });
   } catch (error) {
