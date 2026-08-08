@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDialog } from '@/components/DialogProvider';
 import MarkdownView from '@/components/MarkdownView';
 
 interface Message {
@@ -26,7 +27,8 @@ export default function AIFollowUp({
   answer,
   aiExplanation,
 }: Props) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const dialog = useDialog();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -54,6 +56,11 @@ export default function AIFollowUp({
   const send = async () => {
     const text = input.trim();
     if (!text || loading || !token) return;
+
+    if (user?.isGuest) {
+      await dialog.alert({ title: '游客受限', message: '游客功能暂未开通，请登录使用 AI 追问' });
+      return;
+    }
 
     const userMsg: Message = { role: 'user', content: text };
     const newMessages = [...messages, userMsg];

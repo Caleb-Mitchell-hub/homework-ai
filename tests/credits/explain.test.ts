@@ -34,7 +34,7 @@ beforeEach(() => {
   txMock.user.findUnique.mockReset();
   txMock.user.update.mockReset();
   txMock.creditLedger.create.mockReset();
-  txMock.user.update.mockReturnValue({ credits: 95 });
+  txMock.user.update.mockReturnValue({ credits: 85 });
 });
 
 const baseArgs = {
@@ -71,7 +71,7 @@ describe('explainQuestion - 余额不足', () => {
 });
 
 describe('explainQuestion - 成功路径', () => {
-  it('完整流程: 扣费 -> 调 AI -> 缓存结果, 返回 {cached:false, costCredit:5}', async () => {
+  it('完整流程: 扣费 -> 调 AI -> 缓存结果, 返回 {cached:false, costCredit:15}', async () => {
     vi.mocked(prisma.aIExplanation.findFirst).mockResolvedValue(null);
     txMock.user.findUnique.mockResolvedValue({ credits: 100 });
     vi.mocked(prisma.aIProviderConfig.findFirst).mockResolvedValue({
@@ -83,22 +83,22 @@ describe('explainQuestion - 成功路径', () => {
     const result = await explainQuestion(baseArgs);
     expect(result.cached).toBe(false);
     expect(result.content).toBe('AI 解析内容');
-    expect(result.costCredit).toBe(5);
-    expect(result.newBalance).toBe(95);
+    expect(result.costCredit).toBe(15);
+    expect(result.newBalance).toBe(85);
     expect(callChat).toHaveBeenCalledTimes(1);
     expect(prisma.aIExplanation.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           userId: 'u1',
           questionId: 'q1',
-          costCredit: 5,
+          costCredit: 15,
           content: 'AI 解析内容',
         }),
       })
     );
   });
 
-  it('写 ledger 时 delta=-5, reason=ai_explain, balance=95', async () => {
+  it('写 ledger 时 delta=-15, reason=ai_explain, balance=85', async () => {
     vi.mocked(prisma.aIExplanation.findFirst).mockResolvedValue(null);
     txMock.user.findUnique.mockResolvedValue({ credits: 100 });
     vi.mocked(prisma.aIProviderConfig.findFirst).mockResolvedValue({
@@ -112,9 +112,9 @@ describe('explainQuestion - 成功路径', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           userId: 'u1',
-          delta: -5,
+          delta: -15,
           reason: 'ai_explain',
-          balance: 95,
+          balance: 85,
           refId: 'q1',
         }),
       })

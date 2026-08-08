@@ -16,6 +16,9 @@ export async function POST(request: Request) {
     if (!payload) {
       return NextResponse.json({ error: '无效的token' }, { status: 401 });
     }
+    if (payload.isGuest) {
+      return NextResponse.json({ error: '游客暂不支持 AI 评分，请登录后使用' }, { status: 403 });
+    }
 
     const { resultId, questionId } = await request.json();
     if (!resultId || !questionId) {

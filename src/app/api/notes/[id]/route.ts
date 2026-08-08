@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { jsonFixed } from '@/lib/db-date';
 
 /** GET /api/notes/[id] — 获取单条笔记 */
 export async function GET(
@@ -20,7 +19,7 @@ export async function GET(
     if (note.userId !== payload.userId)
       return NextResponse.json({ error: '无权访问' }, { status: 403 });
 
-    return jsonFixed(note);
+    return NextResponse.json(note);
   } catch (error) {
     console.error('获取笔记错误:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
@@ -60,7 +59,7 @@ export async function PUT(
       },
     });
 
-    return jsonFixed(note);
+    return NextResponse.json(note);
   } catch (error) {
     console.error('更新笔记错误:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });

@@ -7,7 +7,6 @@ import type { InterviewScoreResult } from '@/lib/ai/grading-prompt';
 import type { InterviewQuestionResult } from '@/lib/ai/interview-report-prompt';
 import { callChat } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
-import { jsonFixed } from '@/lib/db-date';
 
 /**
  * 对单道面试题进行 AI 打分（0-100）。
@@ -187,7 +186,7 @@ export async function POST(request: Request) {
       interviewResults,
     );
 
-    return jsonFixed(report);
+    return NextResponse.json(report);
   } catch (error) {
     if (error instanceof InsufficientCreditsForInterviewReportError) {
       return NextResponse.json(

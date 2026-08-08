@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDialog } from '@/components/DialogProvider';
 import MarkdownView from '@/components/MarkdownView';
 
 interface Props {
@@ -20,7 +21,8 @@ interface Props {
 }
 
 export default function AIExplainPanel({ questionId, questionContent, questionType, userAnswer, correctAnswer, options, onNeedCredits, onDone }: Props) {
-  const { token, refreshCredits } = useAuth();
+  const { token, user, refreshCredits } = useAuth();
+  const dialog = useDialog();
   const [state, setState] = useState<
     | { status: 'idle' }
     | { status: 'loading' }
@@ -30,6 +32,10 @@ export default function AIExplainPanel({ questionId, questionContent, questionTy
 
   const ask = async () => {
     if (!token) return;
+    if (user?.isGuest) {
+      await dialog.alert({ title: '游客受限', message: '游客功能暂未开通，请登录使用 AI 解析' });
+      return;
+    }
     setState({ status: 'loading' });
     try {
       const res = await fetch('/api/ai/explain', {

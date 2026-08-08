@@ -1,4 +1,4 @@
-import { callChat, callChatStream } from './providers';
+import { callChatStream } from './providers';
 import { QUESTION_PARSE_PROMPT } from './prompt';
 import { normalizeAIOutputToQuestions, autoConvertEssayToInterview } from './normalize';
 import { decryptApiKey } from './crypto';
@@ -29,6 +29,42 @@ function stripCodeFence(s: string): string {
     return content.slice(0, content.lastIndexOf('```')).trim();
   }
   return t;
+}
+
+/**
+ * 容错: AI 有时在合法 JSON 后面附加解释文字 (如 "以上是解析结果...")。
+ * 使用括号/大括号深度匹配, 提取第一个完整 JSON 结构。
+ */
+function tryExtractJsonPrefix(s: string): string | null {
+  const trimmed = s.trim();
+  const startChar = trimmed[0];
+  if (startChar !== '[' && startChar !== '{') return null;
+
+  const closeChar = startChar === '[' ? ']' : '}';
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (ch === startChar) {
+      depth++;
+    } else if (ch === closeChar) {
+      depth--;
+      if (depth === 0) {
+        try { JSON.parse(trimmed.slice(0, i + 1)); } catch { return null; }
+        return trimmed.slice(0, i + 1);
+      }
+    }
+  }
+
+  return null; // 括号不平衡
 }
 
 /**
@@ -79,14 +115,26 @@ export interface ParseProgressEvent {
 type Loose = Record<string, any>;
 
 function extractQuestions(rawContent: string): Loose[] | null {
-  const json = stripCodeFence(rawContent);
+  let json = stripCodeFence(rawContent);
   let parsed: unknown;
+
+  // 1) 直接解析
   try {
     parsed = JSON.parse(json);
   } catch {
-    const fixed = tryRepairTruncatedJson(json);
-    if (!fixed) return null;
-    try { parsed = JSON.parse(fixed); } catch { return null; }
+    // 2) 尝试提取第一个完整 JSON (处理尾部附加文字)
+    const prefix = tryExtractJsonPrefix(json);
+    if (prefix) {
+      try { parsed = JSON.parse(prefix); } catch { /* fall through */ }
+    }
+    // 3) 尝试修复截断 JSON (处理 token 上限截断)
+    if (!parsed) {
+      const fixed = tryRepairTruncatedJson(json);
+      if (fixed) {
+        try { parsed = JSON.parse(fixed); } catch { return null; }
+      }
+    }
+    if (!parsed) return null;
   }
   const arr: unknown = (parsed && typeof parsed === 'object' && 'questions' in (parsed as Record<string, unknown>))
     ? (parsed as Record<string, unknown>).questions
@@ -193,30 +241,21 @@ export async function aiParseQuestions(opts: {
   provider: ProviderLike;
   signal?: AbortSignal;
 }): Promise<Question[]> {
-  const apiKey = decryptApiKey(opts.provider.apiKeyCipher);
-  const text = opts.text.slice(0, MAX_TEXT_CHARS);
-
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= RETRYABLE; attempt++) {
-    try {
-      const content = await callChat({
-        baseURL: opts.provider.baseURL,
-        apiKey,
-        model: opts.provider.model,
-        messages: [
-          { role: 'system', content: QUESTION_PARSE_PROMPT },
-          { role: 'user', content: text },
-        ],
-        jsonMode: true,
-        signal: opts.signal,
-        maxTokens: 8000,
-      });
-      const arr = extractQuestions(content);
-      if (!arr) throw new Error('AI 返回不是数组');
-      return autoConvertEssayToInterview(normalizeAIOutputToQuestions(arr, genId));
-    } catch (err) {
-      lastErr = err;
+  // 强制使用流式调用，收集结果后返回（兼容旧调用方）
+  const results: Question[] = [];
+  for await (const evt of aiParseQuestionsStream({
+    text: opts.text,
+    provider: opts.provider,
+    signal: opts.signal,
+  })) {
+    if (evt.type === 'complete') {
+      results.push(...evt.questions);
+    } else if (evt.type === 'error') {
+      throw new Error(evt.error);
     }
   }
-  throw new Error(`AI 解析失败(已重试 ${RETRYABLE} 次): ${(lastErr as Error).message}`);
+  if (results.length === 0) {
+    throw new Error('AI 解析失败: 流式调用未返回题目');
+  }
+  return results;
 }

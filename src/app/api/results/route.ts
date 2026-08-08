@@ -3,7 +3,6 @@ import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/au
 import { verifyAdminToken } from '@/lib/admin-auth';
 import { prisma } from '@/lib/prisma';
 import { buildDraftUpsertData } from '@/lib/results-dedup';
-import { jsonFixed } from '@/lib/db-date';
 
 /**
  * 解析请求中的 token —— 同时支持普通用户 token 和管理员 token。
@@ -63,7 +62,7 @@ export async function GET(request: Request) {
       return { ...r, results: arr };
     });
 
-    return jsonFixed({ results: parsed });
+    return NextResponse.json({ results: parsed });
   } catch (error) {
     console.error('获取结果列表错误:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
@@ -155,7 +154,7 @@ export async function POST(request: Request) {
         orderBy: { submittedAt: 'desc' },
       });
       if (recentDedup) {
-        return jsonFixed({ result: safeResult(recentDedup) });
+        return NextResponse.json({ result: safeResult(recentDedup) });
       }
 
       // submitted: 直接 create 新行(允许 N 份历史)，AI 评分异步进行不阻塞返回
@@ -188,7 +187,7 @@ export async function POST(request: Request) {
       });
     }
 
-    return jsonFixed({ result: safeResult(result) });
+    return NextResponse.json({ result: safeResult(result) });
   } catch (error) {
     console.error('创建结果错误:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });

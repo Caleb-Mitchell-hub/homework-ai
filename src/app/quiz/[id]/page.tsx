@@ -18,7 +18,7 @@ import NotePanel from '@/components/NotePanel';
 export default function QuizPage() {
   const params = useParams();
   const router = useRouter();
-  const { token: userToken } = useAuth();
+  const { token: userToken, user } = useAuth();
   // 兼容 admin 登录：admin 的 token 存在 localStorage.adminToken，userToken 拿不到
   const [token, setToken] = useState<string | null>(null);
 
@@ -346,7 +346,7 @@ export default function QuizPage() {
 
   // 提交后自动逐题 AI 评分（不阻塞页面，逐题进行）
   useEffect(() => {
-    if (!submitted || !result?.id || !token || autoGrading) return;
+    if (!submitted || !result?.id || !token || user?.isGuest || autoGrading) return;
     const items = result.results || [];
     const needGrade = items.filter((item: any) => {
       const q = quiz?.questions.find((qq: Question) => qq.id === item.questionId);

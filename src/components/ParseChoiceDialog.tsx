@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDialog } from '@/components/DialogProvider';
 
 interface Props {
   open: boolean;
@@ -10,6 +12,8 @@ interface Props {
 }
 
 export default function ParseChoiceDialog({ open, onClose, onSelect, aiAvailable }: Props) {
+  const { user } = useAuth();
+  const dialog = useDialog();
   const localButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -64,7 +68,14 @@ export default function ParseChoiceDialog({ open, onClose, onSelect, aiAvailable
           </button>
 
           <button
-            onClick={() => aiAvailable && onSelect('ai')}
+            onClick={async () => {
+              if (!aiAvailable) return;
+              if (user?.isGuest) {
+                await dialog.alert({ title: '游客受限', message: '游客功能暂未开通，请登录使用 AI 解析' });
+                return;
+              }
+              onSelect('ai');
+            }}
             disabled={!aiAvailable}
             className={`p-5 border-2 rounded-xl text-left transition-all ${
               aiAvailable

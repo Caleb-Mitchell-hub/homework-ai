@@ -19,7 +19,7 @@ const sourceLabels: Record<NoteSource, string> = {
 };
 
 export default function NotesPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<NoteType | 'all'>('all');
@@ -37,7 +37,7 @@ export default function NotesPage() {
   async function loadNotes() {
     setLoading(true);
     try {
-      const res = await fetch('/api/notes');
+      const res = await fetch('/api/notes', { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
         setNotes(Array.isArray(data) ? data : []);
@@ -70,13 +70,13 @@ export default function NotesPage() {
       if (selectedId) {
         await fetch(`/api/notes/${selectedId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ title: title.trim(), content: content.trim() }),
         });
       } else {
         await fetch('/api/notes', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             type: 'question',
             title: title.trim(),
@@ -95,7 +95,7 @@ export default function NotesPage() {
   async function handleDelete(id: string) {
     if (!confirm('确定要删除这条笔记吗？')) return;
     try {
-      await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+      await fetch(`/api/notes/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
       if (selectedId === id) {
         setSelectedId(null);
         setEditing(false);

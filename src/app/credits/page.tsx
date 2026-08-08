@@ -119,7 +119,7 @@ export default function CreditsPage() {
               {history.map((l) => (
                 <tr key={l.id} className="border-b border-slate-100">
                   <td className="py-2 text-slate-500">
-                    {new Date(l.createdAt).toLocaleString()}
+                    {new Date(l.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}
                   </td>
                   <td className="text-slate-700">{REASON_LABELS[l.reason] || l.reason}</td>
                   <td

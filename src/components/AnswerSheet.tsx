@@ -15,6 +15,7 @@ import ManualGradePanel from '@/components/ManualGradePanel';
 import MarkdownView from '@/components/MarkdownView';
 import NotePanel from '@/components/NotePanel';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDialog } from '@/components/DialogProvider';
 
 const typeNames: Record<string, string> = {
   single: '单选题',
@@ -41,7 +42,8 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
   const [allOpen, setAllOpen] = useState(false);
   // 记录每道题的 AI 解析内容，供追问上下文使用
   const [explainContents, setExplainContents] = useState<Record<string, string>>({});
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const dialog = useDialog();
   // 笔记面板状态
   const [notePanelOpen, setNotePanelOpen] = useState(false);
   const [notePanelQId, setNotePanelQId] = useState<string | undefined>();
@@ -82,6 +84,10 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
   /** 对单道面试题触发 AI 评分 */
   async function triggerGrade(questionId: string) {
     if (!token || !result?.id) return;
+    if (user?.isGuest) {
+      await dialog.alert({ title: '游客受限', message: '游客功能暂未开通，请登录使用 AI 评分' });
+      return;
+    }
     setGradingQids((prev) => new Set(prev).add(questionId));
     try {
       const res = await fetch('/api/ai/grade-interview', {

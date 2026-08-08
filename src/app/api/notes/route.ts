@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { jsonFixed } from '@/lib/db-date';
 
 /** GET /api/notes — 获取笔记列表，支持按 type/questionId/quizId/resultId 筛选 */
 export async function GET(request: Request) {
@@ -33,7 +32,7 @@ export async function GET(request: Request) {
       orderBy: { updatedAt: 'desc' },
     });
 
-    return jsonFixed(notes);
+    return NextResponse.json(notes);
   } catch (error) {
     console.error('获取笔记列表错误:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
@@ -76,7 +75,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return jsonFixed(note);
+    return NextResponse.json(note);
   } catch (error) {
     console.error('创建笔记错误:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });

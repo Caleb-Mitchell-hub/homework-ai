@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Note, NoteType, NoteSource } from '@/types';
 
 interface Props {
@@ -36,6 +37,7 @@ export default function NotePanel({
   const [content, setContent] = useState('');
   const [noteType, setNoteType] = useState<NoteType>('answer');
   const [saving, setSaving] = useState(false);
+  const { token } = useAuth();
 
   // 加载笔记列表
   useEffect(() => {
@@ -61,7 +63,7 @@ export default function NotePanel({
       if (quizId) params.set('quizId', quizId);
       if (resultId) params.set('resultId', resultId);
 
-      const res = await fetch(`/api/notes?${params.toString()}`);
+      const res = await fetch(`/api/notes?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
         setNotes(Array.isArray(data) ? data : []);
@@ -81,14 +83,14 @@ export default function NotePanel({
         // 更新
         await fetch(`/api/notes/${editingId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ title: title.trim(), content: content.trim() }),
         });
       } else {
         // 新建
         await fetch('/api/notes', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             type: noteType,
             questionId: questionId || null,
@@ -115,7 +117,7 @@ export default function NotePanel({
 
   async function handleDelete(id: string) {
     try {
-      await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+      await fetch(`/api/notes/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
       await loadNotes();
     } catch {
       // ignore

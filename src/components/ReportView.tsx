@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDialog } from '@/components/DialogProvider';
 import { ReportStats } from '@/lib/report/calculator';
 import ReportBarChart from '@/components/ReportBarChart';
 import MarkdownView from '@/components/MarkdownView';
@@ -37,13 +38,18 @@ export default function ReportView({
   /** 是否为面试题测验 — 决定调用哪个 AI 报告 API */
   isInterview?: boolean;
 }) {
-  const { token, refreshCredits } = useAuth();
+  const { token, user, refreshCredits } = useAuth();
+  const dialog = useDialog();
   const [report, setReport] = useState<AIReportContent | InterviewReportContent | undefined>(initialReport);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newBalance, setNewBalance] = useState<number | null>(null);
 
   const generate = async () => {
+    if (user?.isGuest) {
+      await dialog.alert({ title: '游客受限', message: '游客功能暂未开通，请登录使用 AI 报告' });
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -73,6 +79,10 @@ export default function ReportView({
 
   /** 面试题报告生成（100积分） */
   const generateInterviewReport = async () => {
+    if (user?.isGuest) {
+      await dialog.alert({ title: '游客受限', message: '游客功能暂未开通，请登录使用 AI 面试分析' });
+      return;
+    }
     setLoading(true);
     setError(null);
     try {

@@ -69,9 +69,15 @@ function parseAnswerSection(content: string): ParsedAnswer[] {
 
     if (currentSection && /^[\d]+[.、]/.test(trimmed)) {
       // Handle both "1.B" and "1. B" formats
+      // 注意: 对于非选择题答案,文本可能以大写字母开头(如 "Cookie"),
+      // 此时 ([A-Z]+) 会误捕获首字母。所以仅 selection 区段优先取字母,
+      // 其他区段始终拼接 match[2]+match[3] 还原完整答案。
       const match = trimmed.match(/^(\d+)[.、]\s*([A-Z]+)?\s*(.+)?/);
       if (match) {
-        const answer = match[2] || match[3]?.trim() || '';
+        const answer =
+          currentSection === 'selection'
+            ? (match[2] || match[3]?.trim() || '')
+            : ((match[2] ?? '') + (match[3] ?? '')).trim();
         answers.push({
           section: currentSection,
           questionNum: parseInt(match[1]),
@@ -96,7 +102,8 @@ function parseSelectionQuestions(content: string, answerMap: Map<string, string>
   for (const line of lines) {
     const trimmed = line.trim();
 
-    const numMatch = trimmed.match(/^(?:#{1,6}\s*)?(\d+)\.\s+(.+)/);
+    // 题目序号: 1. 1、1) 1.题目 等格式
+    const numMatch = trimmed.match(/^(?:#{1,6}\s*)?(\d+)[.、)]\s*(.+)/);
     if (numMatch) {
       if (currentTitle && currentOptions.length > 0) {
         const answer = answerMap.get(`selection_${currentNum}`) || '';
@@ -160,7 +167,8 @@ function parseFillQuestions(content: string, answerMap: Map<string, string>): Qu
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    const match = trimmed.match(/^(?:#{1,6}\s*)?(\d+)\.\s*(.+)/);
+    // 题目序号: 1. 1、1) 等格式
+    const match = trimmed.match(/^(?:#{1,6}\s*)?(\d+)[.、)]\s*(.+)/);
     if (match) {
       const num = match[1];
       const title = match[2].replace(/（.+?）/g, '____').trim();
@@ -192,7 +200,8 @@ function parseEssayQuestions(content: string, answerMap: Map<string, string>): Q
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    const match = trimmed.match(/^(?:#{1,6}\s*)?(\d+)\.\s*(.+)/);
+    // 题目序号: 1. 1、1) 等格式
+    const match = trimmed.match(/^(?:#{1,6}\s*)?(\d+)[.、)]\s*(.+)/);
     if (match) {
       const num = match[1];
       const title = match[2].trim();
@@ -248,7 +257,7 @@ function parseInterviewQuestions(content: string, answerMap: Map<string, string>
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    const numMatch = trimmed.match(/^(?:#{1,6}\s*)?(\d+)\.\s*(.+)/);
+    const numMatch = trimmed.match(/^(?:#{1,6}\s*)?(\d+)[.、)]\s*(.+)/);
     if (numMatch) {
       flush();
       currentNum = numMatch[1];
@@ -342,28 +351,146 @@ function parseCodeQuestions(content: string): Question[] {
   return questions;
 }
 
+/**
+ * 解析「第N题：… / 第N题答案：…」中文编号格式（常见于面试题库）
+ * 支持题目和答案交错或分块排列，支持多行题目文本。
+ */
+function parseChineseNumberedQA(content: string): Question[] {
+  const questions: Question[] = [];
+  const lines = content.split('\n');
+
+  const questionMap = new Map<number, string>(); // num → question text
+  const answerMap = new Map<number, string>();   // num → answer text
+
+  type QState = 'idle' | 'in_question' | 'in_answer';
+  let state: QState = 'idle';
+  let currentNum = 0;
+  let currentLines: string[] = [];
+
+  const flush = () => {
+    if (currentNum <= 0 || currentLines.length === 0) return;
+    const text = currentLines.join('\n').trim();
+    if (!text) return;
+    if (state === 'in_question') {
+      // 如果同题号已有内容,追加(用换行拼接)
+      const existing = questionMap.get(currentNum);
+      questionMap.set(currentNum, existing ? existing + '\n' + text : text);
+    } else if (state === 'in_answer') {
+      const existing = answerMap.get(currentNum);
+      answerMap.set(currentNum, existing ? existing + '\n' + text : text);
+    }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // 答案行:第N题答案：... (必须在题目行之前检测,因为「答案」是「题」的子串)
+    const aMatch = trimmed.match(/^第(\d+)题答案[：:]\s*(.*)/);
+    if (aMatch) {
+      flush();
+      state = 'in_answer';
+      currentNum = parseInt(aMatch[1]);
+      currentLines = aMatch[2] ? [aMatch[2]] : [];
+      continue;
+    }
+
+    // 题目行:第N题：...
+    const qMatch = trimmed.match(/^第(\d+)题[：:]\s*(.*)/);
+    if (qMatch) {
+      flush();
+      state = 'in_question';
+      currentNum = parseInt(qMatch[1]);
+      currentLines = qMatch[2] ? [qMatch[2]] : [];
+      continue;
+    }
+
+    // 其他行:追加到当前题目/答案
+    if (state !== 'idle' && trimmed) {
+      currentLines.push(trimmed);
+    }
+  }
+  flush();
+
+  // 配对生成题目(面试题类型)
+  for (const [num, qText] of questionMap) {
+    const answer = answerMap.get(num) || '';
+    questions.push({
+      id: generateId(),
+      type: 'interview' as const,
+      title: `${num}. ${qText}`,
+      answer: stripCodeQuotes(answer),
+      referenceAnswer: stripCodeQuotes(answer),
+    });
+  }
+
+  return questions;
+}
+
 export function parseMarkdown(content: string): Question[] {
   const questions: Question[] = [];
 
-  // 找出所有 ## 段(中文序号,一/二/.../十/十一),按顺序遍历
-  // 逐行扫描,遇到 `## N、` 开头的行就开新段,正文累加
+  // ── 找出所有区段(## 或 # 标题行) ──
+  // 支持格式:
+  //   ## 一、单选题      (中文序号+、)
+  //   ## 1、单选题      (阿拉伯数字+、)
+  //   ## 1. 单选题      (阿拉伯数字+.)
+  //   ## 单选题         (纯关键词,无序号)
+  //   # 一、单选题      (一级标题)
+  // 数字序号为可选项,仅当标题含题型关键词时才视为区段。
   type Section = { index: number; title: string; body: string };
   const sections: Section[] = [];
   const lines = content.split('\n');
-  const sectionHeader = /^##\s*([一二三四五六七八九十百千零]+)、(.+)$/;
+  // 灵活的区段标题: #{1,2} 标题行 + 可选序号前缀 + 关键词
+  // (?!\#) 确保 ### 不被误匹配为 #{1,2} 区段标题
+  const sectionHeader = /^(?:#{1,2})(?!\#)\s*(?:[一二三四五六七八九十百千零\d]+[、.，,]\s*)?(.+)$/;
+  const SECTION_KW = /选择题|单选题|填空题|简答题|面试题|代码题|答案|选择|填空|简答|面试|编程/;
   let current: Section | null = null;
   for (const line of lines) {
-    const m2 = line.match(sectionHeader);
-    if (m2) {
+    const trimmed = line.trim();
+    const m2 = trimmed.match(sectionHeader);
+    if (m2 && SECTION_KW.test(m2[1])) {
       if (current) sections.push(current);
-      current = { index: sections.length, title: m2[2].trim(), body: '' };
+      current = { index: sections.length, title: m2[1].trim(), body: '' };
     } else if (current) {
       current.body += line + '\n';
     }
   }
   if (current) sections.push(current);
 
-  // 答案区:找到第一个标题里含「答案」字样的段(支持「七、选择题...答案」「八、非代码题答案」)
+  // ── 无区段时的回退模式:把整个文档当题型内容解析 ──
+  if (sections.length === 0) {
+    // 尝试从全文检测题型关键词,创建虚拟区段
+    const combined = content;
+    if (/选择题|单选题|[A-D][.、)]/.test(combined) && /\d+[.、)]/.test(combined)) {
+      questions.push(...parseSelectionQuestions(combined, new Map()));
+    }
+    if (/填空题|____/.test(combined)) {
+      questions.push(...parseFillQuestions(combined, new Map()));
+    }
+    if (/简答题/.test(combined)) {
+      questions.push(...parseEssayQuestions(combined, new Map()));
+    }
+    if (/面试题/.test(combined)) {
+      questions.push(...parseInterviewQuestions(combined, new Map()));
+    }
+    // 第N题/第N题答案 中文编号格式(常见于面试题库)
+    if (questions.length === 0 && /第\d+题/.test(combined)) {
+      questions.push(...parseChineseNumberedQA(combined));
+    }
+    // 如果仍然没有解析出题目,尝试将全文作为默认题型(选择/简答)
+    if (questions.length === 0 && /\d+[.、)]/.test(combined)) {
+      // 有编号列表 → 先尝试选择题,失败则尝试简答题
+      const sel = parseSelectionQuestions(combined, new Map());
+      if (sel.length > 0) {
+        questions.push(...sel);
+      } else {
+        questions.push(...parseEssayQuestions(combined, new Map()));
+      }
+    }
+    return questions;
+  }
+
+  // ── 答案区:找到第一个标题里含「答案」字样的段 ──
   const answerSection = sections.find((s) => /答案/.test(s.title));
   let answerContent = '';
   if (answerSection) answerContent = answerSection.body;
@@ -374,12 +501,14 @@ export function parseMarkdown(content: string): Question[] {
   }
 
   const answerMap = new Map<string, string>();
-  const parsedAnswers = parseAnswerSection(answerContent);
-  for (const pa of parsedAnswers) {
-    answerMap.set(`${pa.section}_${pa.questionNum}`, pa.answer);
+  if (answerContent) {
+    const parsedAnswers = parseAnswerSection(answerContent);
+    for (const pa of parsedAnswers) {
+      answerMap.set(`${pa.section}_${pa.questionNum}`, pa.answer);
+    }
   }
 
-  // 题型段:按「标题关键词」分配,而不是固定序号
+  // ── 题型段:按「标题关键词」分配 ──
   for (const s of sections) {
     if (/选择题|单选题/.test(s.title)) {
       questions.push(...parseSelectionQuestions(s.body, answerMap));
@@ -392,8 +521,7 @@ export function parseMarkdown(content: string): Question[] {
     }
   }
 
-  // ★ 代码题从答案区里切:支持「## 七、...」也支持「## 八、答案」,任何含「答案」字样的段之后
-  //   的「### 模拟题 N 参考答案:xxx」+ ``` 围栏都会被切
+  // ★ 代码题从答案区里切
   if (answerSection) {
     questions.push(...parseCodeQuestions(answerContent));
   }
