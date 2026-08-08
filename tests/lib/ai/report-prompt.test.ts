@@ -8,6 +8,7 @@ describe('buildReportPrompt', () => {
       score: 8,
       totalScore: 10,
       byType: { single: { total: 3, correct: 2, correctRate: 0.67 } },
+      byDifficulty: { 中等: { total: 3, correct: 2, correctRate: 0.67 } },
       wrongQuestions: [
         { index: 3, title: '什么是闭包', type: 'essay', userAnswer: '...', correctAnswer: '...' },
       ],
@@ -24,6 +25,7 @@ describe('buildReportPrompt', () => {
       score: 0,
       totalScore: 1,
       byType: {},
+      byDifficulty: {},
       wrongQuestions: [],
     });
     expect(p).toContain('knowledgePoints');
@@ -36,6 +38,7 @@ describe('buildReportPrompt', () => {
       score: 10,
       totalScore: 10,
       byType: {},
+      byDifficulty: {},
       wrongQuestions: [],
     });
     expect(p).toContain('满分卷');

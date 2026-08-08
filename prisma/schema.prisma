@@ -32,7 +32,10 @@ model User {
   checkIns           DailyCheckIn[]
   creditLogs         CreditLedger[]
   explanations       AIExplanation[]
+  followups          AIFollowUp[]
   reports            AIReport[]
+  quizCategories     QuizCategory[]
+  notes              Note[]
 }
 
 model Admin {
@@ -141,6 +144,7 @@ enum CreditReason {
   admin_adjust
   ai_explain
   ai_report
+  ai_interview_report
   refund
 }
 
@@ -162,7 +166,7 @@ model DailyCheckIn {
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   checkInDate DateTime @db.Date
-  credit      Int      @default(5)
+  credit      Int      @default(30)
   createdAt   DateTime @default(now())
 
   @@unique([userId, checkInDate])
@@ -180,6 +184,32 @@ model AIExplanation {
   @@index([userId, questionId])
 }
 
+model AIFollowUp {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId String
+  role       String   // "user" | "assistant"
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([userId, questionId])
+}
+
+/// 用户自建题库分类（替代 localStorage，跨设备同步）
+model QuizCategory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String   @db.VarChar(40)
+  /// 排序序号，同用户内递增
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
 model AIReport {
   id         String     @id @default(cuid())
   resultId   String     @unique
@@ -194,4 +224,31 @@ model AIReport {
   updatedAt  DateTime   @updatedAt
 
   @@index([userId])
+}
+
+model Note {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "question" | "answer" | "ai_output"
+  type       String   @db.VarChar(20)
+  /// 关联的题目 ID（跨测验共享时用）
+  questionId String?
+  /// 关联的测验 ID
+  quizId     String?
+  /// 关联的答题结果 ID（答题笔记时用，null = 题目笔记）
+  resultId   String?
+  /// 笔记标题
+  title      String   @db.VarChar(200)
+  /// 笔记内容 (Markdown)
+  content    String   @db.Text
+  /// "manual" | "ai_explain" | "reference_answer" | "ai_report"
+  source     String   @default("manual") @db.VarChar(30)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, quizId])
+  @@index([userId, questionId])
+  @@index([userId, resultId])
 }

@@ -1,4 +1,4 @@
-import { Question, SingleQuestion, MultipleQuestion, BooleanQuestion, FillQuestion, EssayQuestion, CodeQuestion } from '@/types';
+import { Question, SingleQuestion, MultipleQuestion, BooleanQuestion, FillQuestion, EssayQuestion, CodeQuestion, InterviewQuestion } from '@/types';
 import { generateId } from './storage';
 
 /**
@@ -18,7 +18,7 @@ import { generateId } from './storage';
  * - analysis / score 挂到 BaseQuestion 的可选字段上
  */
 
-type AdminLocalType = 'single' | 'multiple' | 'judge' | 'fill' | 'essay' | 'code';
+type AdminLocalType = 'single' | 'multiple' | 'judge' | 'fill' | 'essay' | 'code' | 'interview';
 type AdminLocalQ = {
   id?: string;
   type: AdminLocalType;
@@ -140,6 +140,16 @@ export function adminLocalToGlobal(q: AdminLocalQ): Question {
         inputExample: '',
         outputExample: '',
         answer: answerRaw,
+      };
+      return withAnnotations(out, q);
+    }
+    case 'interview': {
+      const out: InterviewQuestion = {
+        id,
+        type: 'interview',
+        title,
+        answer: answerRaw,
+        referenceAnswer: answerRaw,
       };
       return withAnnotations(out, q);
     }

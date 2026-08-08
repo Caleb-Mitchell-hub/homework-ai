@@ -11,6 +11,14 @@ interface Props {
   userAnswer: string;
   onChange: (questionId: string, answer: string) => void;
   showResult?: boolean;
+  /** 面试题 AI 打分 0-100 */
+  interviewScore?: number;
+  /** 面试题 AI 详细反馈 */
+  interviewFeedback?: {
+    strengths: string[];
+    weaknesses: string[];
+    suggestion: string;
+  };
 }
 
 const typeColors: Record<Question['type'], { bg: string; text: string; border: string }> = {
@@ -33,7 +41,7 @@ const typeLabels: Record<Question['type'], string> = {
   interview: '面试题'
 };
 
-export default function QuestionCard({ question, index, userAnswer, onChange, showResult }: Props) {
+export default function QuestionCard({ question, index, userAnswer, onChange, showResult, interviewScore, interviewFeedback }: Props) {
   const colors = typeColors[question.type];
 
   const renderInput = () => {
@@ -78,7 +86,7 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
 
       case 'multiple': {
         const q = question as MultipleQuestion;
-        const selected = new Set(userAnswer.toUpperCase().split('').filter(c => /[A-D]/.test(c)));
+        const selected = new Set(userAnswer.toUpperCase().split('').filter(c => /[A-Z]/.test(c)));
         return (
           <div className="space-y-3">
             {q.options.map((opt, i) => {
@@ -320,17 +328,89 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
         <MarkdownView content={question.title} size="lg" />
       </div>
 
+      {/* 非代码题但携带代码块时，显示代码 */}
+      {question.type !== 'code' && question.code && (
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-slate-500 text-sm">代码：</span>
+            <span className="px-2 py-0.5 rounded bg-cyan-50 text-cyan-600 text-xs">{question.language || 'plaintext'}</span>
+          </div>
+          <Highlight theme={themes.nightOwl} code={question.code} language={(question.language || 'plaintext') as any}>
+            {({ className, style, tokens, getLineProps, getTokenProps }) => (
+              <pre className={`${className} p-4 bg-slate-900 border border-slate-700 rounded-xl overflow-x-auto text-sm`} style={style}>
+                {tokens.map((line, i) => (
+                  <div key={i} {...getLineProps({ line })}>
+                    {line.map((token, key) => (
+                      <span key={key} {...getTokenProps({ token })} />
+                    ))}
+                  </div>
+                ))}
+              </pre>
+            )}
+          </Highlight>
+        </div>
+      )}
+
       {renderInput()}
 
-      {showResult && question.type === 'interview' && (question as InterviewQuestion).referenceAnswer && (
-        <div className="mt-5 p-4 bg-indigo-50/50 rounded-xl border border-indigo-200">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-indigo-600 font-medium">💡 参考思路</span>
-          </div>
-          <div className="text-slate-700">
-            <MarkdownView content={(question as InterviewQuestion).referenceAnswer} size="base" />
-          </div>
-        </div>
+      {showResult && question.type === 'interview' && (
+        <>
+          {/* AI 评分卡片 */}
+          {typeof interviewScore === 'number' && (
+            <div className="mt-5 p-4 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl border border-indigo-200">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="text-indigo-600 font-medium">🤖 AI 评分</span>
+                <span className={`text-2xl font-bold ${
+                  interviewScore >= 80 ? 'text-emerald-600' :
+                  interviewScore >= 60 ? 'text-amber-600' :
+                  'text-red-500'
+                }`}>
+                  {interviewScore}<span className="text-sm font-normal text-slate-400">/100</span>
+                </span>
+              </div>
+              {/* 亮点 */}
+              {interviewFeedback?.strengths && interviewFeedback.strengths.length > 0 && (
+                <div className="mb-2">
+                  <span className="text-sm text-emerald-600 font-medium">✅ 亮点：</span>
+                  <ul className="ml-4 mt-1 text-sm text-slate-700">
+                    {interviewFeedback.strengths.map((s, i) => (
+                      <li key={i} className="list-disc">{s}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {/* 不足 */}
+              {interviewFeedback?.weaknesses && interviewFeedback.weaknesses.length > 0 && (
+                <div className="mb-2">
+                  <span className="text-sm text-amber-600 font-medium">⚠️ 不足：</span>
+                  <ul className="ml-4 mt-1 text-sm text-slate-700">
+                    {interviewFeedback.weaknesses.map((w, i) => (
+                      <li key={i} className="list-disc">{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {/* 建议 */}
+              {interviewFeedback?.suggestion && (
+                <div className="mt-2">
+                  <span className="text-sm text-blue-600 font-medium">💡 改进建议：</span>
+                  <p className="mt-1 text-sm text-slate-700">{interviewFeedback.suggestion}</p>
+                </div>
+              )}
+            </div>
+          )}
+          {/* 参考思路 */}
+          {(question as InterviewQuestion).referenceAnswer && (
+            <div className="mt-5 p-4 bg-indigo-50/50 rounded-xl border border-indigo-200">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-indigo-600 font-medium">💡 参考思路</span>
+              </div>
+              <div className="text-slate-700">
+                <MarkdownView content={(question as InterviewQuestion).referenceAnswer} size="base" />
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {showResult && question.type !== 'code' && question.type !== 'essay' && question.type !== 'interview' && (
@@ -347,14 +427,16 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
         </div>
       )}
 
-      {/* 追问入口 */}
-      <div className="mt-4 pt-3 border-t border-slate-100">
-        <AIFollowUp
-          questionId={question.id}
-          questionContent={question.title}
-          questionType={question.type}
-        />
-      </div>
+      {/* 追问入口 — 仅在显示答案时出现 */}
+      {showResult && (
+        <div className="mt-4 pt-3 border-t border-slate-100">
+          <AIFollowUp
+            questionId={question.id}
+            questionContent={question.title}
+            questionType={question.type}
+          />
+        </div>
+      )}
     </div>
   );
 }

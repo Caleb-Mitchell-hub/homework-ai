@@ -95,6 +95,9 @@ export async function POST(req: NextRequest) {
             if (req.signal.aborted) throw new Error('aborted');
             if (evt.type === 'progress') {
               send({ progress: evt.data.progress, message: evt.data.message });
+            } else if (evt.type === 'delta') {
+              // 逐字流式输出原始 AI 文本到前端
+              send({ type: 'delta', content: evt.content });
             } else if (evt.type === 'error') {
               send({ progress: 0, message: evt.error, error: evt.error });
               return;

@@ -23,6 +23,8 @@ export function getActualAnswer(q: Question): string {
       const firstLine = code.split('\n').find((l) => l.trim()) ?? '';
       return firstLine;
     }
+    case 'interview':
+      return String((q as any).referenceAnswer ?? '').trim() || '见详情';
     default:
       return '';
   }
@@ -49,6 +51,8 @@ export function getReferenceAnswer(q: Question): string {
       return String((q as any).referenceAnswer ?? (q as any).answer ?? '');
     case 'code':
       return String((q as any).code ?? '');
+    case 'interview':
+      return String((q as any).referenceAnswer ?? (q as any).answer ?? '');
     default:
       return '';
   }
@@ -84,6 +88,7 @@ export function isCorrect(q: Question, userAnswer: string): boolean | undefined 
     }
     case 'essay':
     case 'code':
+    case 'interview':
     default:
       return undefined;
   }
@@ -91,7 +96,7 @@ export function isCorrect(q: Question, userAnswer: string): boolean | undefined 
 
 /** 显示用的正确答案短文本(用于题头 "答: ...") */
 export function formatCorrectAnswer(q: Question): string {
-  if (q.type === 'essay') return '见详情';
+  if (q.type === 'essay' || q.type === 'interview') return '见详情';
   if (q.type === 'code') {
     const line = getActualAnswer(q);
     return line.length > 24 ? line.slice(0, 24) + '…' : line;

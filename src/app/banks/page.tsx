@@ -7,6 +7,8 @@ import { useDialog } from '@/components/DialogProvider';
 import { SERIF } from '@/components/SidebarParts';
 import { getCategoryDisplay, PRESET_CATEGORIES, PREFIX_PRESET, PREFIX_USER } from '@/lib/quizCategories';
 import { useQuizCategories } from '@/contexts/QuizCategoryContext';
+import { quizToMarkdown } from '@/lib/quiz-to-markdown';
+import JSZip from 'jszip';
 
 interface QuizListItem {
   id: string;
@@ -48,6 +50,24 @@ function fmtDate(d: string | Date | undefined) {
   return `${y}-${m}-${day} ${hh}:${mm}`;
 }
 
+/** 清理文件名中的非法字符 */
+function sanitizeFilename(name: string): string {
+  return name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120) || '题库';
+}
+
+/** 触发浏览器下载 Blob */
+function downloadBlob(data: string | Blob, filename: string, mime: string) {
+  const blob = data instanceof Blob ? data : new Blob([data], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function BanksPage() {
   const router = useRouter();
   const { user, token, loading } = useAuth();
@@ -65,6 +85,7 @@ export default function BanksPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchBusy, setBatchBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
 
   /** 重命名状态 */
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -78,6 +99,21 @@ export default function BanksPage() {
     setToast({ kind, text });
     setTimeout(() => setToast(null), 2400);
   }, []);
+
+  /** 导出选项弹窗 */
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportOpts, setExportOpts] = useState({
+    aiExplanation: false,
+    followUp: false,
+    report: false,
+  });
+  const toggleExportOpt = (key: keyof typeof exportOpts) => {
+    setExportOpts((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+  const toggleExportAll = () => {
+    const allOn = exportOpts.aiExplanation && exportOpts.followUp && exportOpts.report;
+    setExportOpts({ aiExplanation: !allOn, followUp: !allOn, report: !allOn });
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -222,6 +258,101 @@ export default function BanksPage() {
       showToast('err', '批量删除失败');
     } finally {
       setBatchBusy(false);
+    }
+  };
+
+  /** 待导出的题库 id 列表（打开弹窗时暂存） */
+  const [pendingExportIds, setPendingExportIds] = useState<string[]>([]);
+
+  /** 打开导出选项弹窗 */
+  const openExportDialog = (ids: string[]) => {
+    setPendingExportIds(ids);
+    // 默认全部不勾选
+    setExportOpts({ aiExplanation: false, followUp: false, report: false });
+    setShowExportDialog(true);
+  };
+
+  /** 确认导出（从弹窗中调用） */
+  const doExport = async () => {
+    setShowExportDialog(false);
+    await handleExport(pendingExportIds, exportOpts);
+  };
+
+  /**
+   * 通用导出入口：传入题库 id 列表 + 导出选项。
+   *  - 1 个 → 单 .md 文件
+   *  - 多个 → 打包为 .zip
+   */
+  const handleExport = async (ids: string[], include?: {
+    aiExplanation?: boolean;
+    followUp?: boolean;
+    report?: boolean;
+  }) => {
+    if (ids.length === 0) return;
+    setExportBusy(true);
+    try {
+      const res = await fetch('/api/quizzes/batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ids, include }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast('err', data.error || '导出失败');
+        return;
+      }
+      const quizzes = data.quizzes || [];
+      if (quizzes.length === 0) {
+        showToast('err', '没有可导出的题库');
+        return;
+      }
+      const ts = new Date().toISOString().slice(0, 10);
+
+      if (quizzes.length === 1) {
+        // 单个题库 → 直接下载 .md 文件
+        const q = quizzes[0];
+        const extras: any = {};
+        if (q.explanations) extras.explanations = q.explanations;
+        if (q.followups) extras.followups = q.followups;
+        if (q.report) extras.report = q.report;
+        const md = quizToMarkdown({
+          title: q.title,
+          questions: q.questions,
+          timeLimit: q.timeLimit,
+          createdAt: q.createdAt,
+        }, Object.keys(extras).length > 0 ? extras : undefined);
+        const safeName = sanitizeFilename(q.title);
+        downloadBlob(md, `${safeName}.md`, 'text/markdown');
+        showToast('ok', `已导出「${q.title}」`);
+      } else {
+        // 多个题库 → 打包为 .zip
+        const zip = new JSZip();
+        for (const q of quizzes) {
+          const extras: any = {};
+          if (q.explanations) extras.explanations = q.explanations;
+          if (q.followups) extras.followups = q.followups;
+          if (q.report) extras.report = q.report;
+          const md = quizToMarkdown({
+            title: q.title,
+            questions: q.questions,
+            timeLimit: q.timeLimit,
+            createdAt: q.createdAt,
+          }, Object.keys(extras).length > 0 ? extras : undefined);
+          const safeName = sanitizeFilename(q.title);
+          zip.file(`${safeName}.md`, md);
+        }
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        downloadBlob(zipBlob, `题库导出_${ts}_${quizzes.length}套.zip`, 'application/zip');
+        showToast('ok', `已导出 ${quizzes.length} 个题库`);
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('err', '导出失败');
+    } finally {
+      setExportBusy(false);
     }
   };
 
@@ -402,6 +533,13 @@ export default function BanksPage() {
               {selected.size === view.length ? '取消全选' : '全选'}
             </button>
             <button
+              onClick={() => openExportDialog(Array.from(selected))}
+              disabled={selected.size === 0 || exportBusy}
+              className="px-3 py-1 text-[11.5px] bg-emerald-400 text-white rounded hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {exportBusy ? '导出中…' : '导出'}
+            </button>
+            <button
               onClick={handleBatchDelete}
               disabled={selected.size === 0 || batchBusy}
               className="px-3 py-1 text-[11.5px] bg-rose-400 text-white rounded hover:bg-rose-500 disabled:opacity-50"
@@ -542,6 +680,14 @@ export default function BanksPage() {
                       >
                         答题
                       </button>
+                      <button
+                        onClick={() => openExportDialog([q.id])}
+                        disabled={exportBusy}
+                        title="导出为 Markdown 文件"
+                        className="px-2.5 py-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded text-[11.5px] transition-colors disabled:opacity-50"
+                      >
+                        导出
+                      </button>
                       <select
                         value={q.categoryId ?? ''}
                         onChange={(e) => handleChangeCategory(q.id, e.target.value || null)}
@@ -582,6 +728,80 @@ export default function BanksPage() {
           </ul>
         )}
       </div>
+
+      {/* 导出选项弹窗 */}
+      {showExportDialog && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl">
+            <h3 className="text-slate-800 text-lg font-bold mb-1">导出选项</h3>
+            <p className="text-[12px] text-slate-500 mb-4">
+              即将导出 {pendingExportIds.length} 个题库。选择需要包含的附加内容：
+            </p>
+            <div className="space-y-3 mb-5">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked
+                  disabled
+                  className="w-4 h-4 rounded accent-sky-400 opacity-60"
+                />
+                <span className="text-[13px] text-slate-700">题目与答案<span className="text-[11px] text-slate-400 ml-1">（默认包含）</span></span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer" onClick={() => toggleExportOpt('aiExplanation')}>
+                <input
+                  type="checkbox"
+                  checked={exportOpts.aiExplanation}
+                  onChange={() => toggleExportOpt('aiExplanation')}
+                  className="w-4 h-4 rounded accent-violet-400"
+                />
+                <span className="text-[13px] text-slate-700">AI 解析</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer" onClick={() => toggleExportOpt('followUp')}>
+                <input
+                  type="checkbox"
+                  checked={exportOpts.followUp}
+                  onChange={() => toggleExportOpt('followUp')}
+                  className="w-4 h-4 rounded accent-indigo-400"
+                />
+                <span className="text-[13px] text-slate-700">追问记录</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer" onClick={() => toggleExportOpt('report')}>
+                <input
+                  type="checkbox"
+                  checked={exportOpts.report}
+                  onChange={() => toggleExportOpt('report')}
+                  className="w-4 h-4 rounded accent-emerald-400"
+                />
+                <span className="text-[13px] text-slate-700">答题报告</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer" onClick={toggleExportAll}>
+                <input
+                  type="checkbox"
+                  checked={exportOpts.aiExplanation && exportOpts.followUp && exportOpts.report}
+                  onChange={toggleExportAll}
+                  className="w-4 h-4 rounded accent-sky-400"
+                />
+                <span className="text-[13px] text-slate-700 font-medium">全选</span>
+              </label>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowExportDialog(false)}
+                className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 text-[13px]"
+              >
+                取消
+              </button>
+              <button
+                onClick={doExport}
+                disabled={exportBusy}
+                className="flex-1 py-2 bg-gradient-to-r from-sky-400 to-emerald-400 text-white rounded-lg hover:from-sky-500 hover:to-emerald-500 text-[13px] disabled:opacity-50"
+              >
+                {exportBusy ? '导出中…' : '确认导出'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (

@@ -3,51 +3,7 @@ import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/au
 import { verifyAdminToken } from '@/lib/admin-auth';
 import { prisma } from '@/lib/prisma';
 import { buildDraftUpsertData } from '@/lib/results-dedup';
-import { callChat } from '@/lib/ai/providers';
-import { decryptApiKey } from '@/lib/ai/crypto';
-import { buildGradingPrompt } from '@/lib/ai/grading-prompt';
-
-/**
- * 给一道主观题调 AI 拿评语(aiComment)。失败一律降级为 undefined,
- * 不影响结果保存(单题/整体失败均不影响)。
- */
-async function gradeOneQuestion(
-  q: any,
-  userAnswer: string,
-  refAnswer: string,
-): Promise<string | undefined> {
-  try {
-    const prompt = buildGradingPrompt({
-      questionContent: q.title ?? '',
-      questionType: q.type,
-      referenceAnswer: refAnswer,
-      userAnswer,
-      language: q.language,
-    });
-    const provider = await prisma.aIProviderConfig.findFirst({
-      where: { isActive: true },
-    });
-    if (!provider) return undefined;
-    const apiKey = decryptApiKey(provider.apiKeyCipher);
-    const content = await callChat({
-      baseURL: provider.baseURL,
-      apiKey,
-      model: provider.model,
-      messages: [{ role: 'system', content: prompt }],
-      jsonMode: true,
-      maxTokens: 800,
-      temperature: 0.4,
-    });
-    try {
-      const parsed = JSON.parse(content);
-      return typeof parsed.comment === 'string' ? parsed.comment : undefined;
-    } catch {
-      return undefined;
-    }
-  } catch {
-    return undefined;
-  }
-}
+import { jsonFixed } from '@/lib/db-date';
 
 /**
  * 解析请求中的 token —— 同时支持普通用户 token 和管理员 token。
@@ -107,7 +63,7 @@ export async function GET(request: Request) {
       return { ...r, results: arr };
     });
 
-    return NextResponse.json({ results: parsed });
+    return jsonFixed({ results: parsed });
   } catch (error) {
     console.error('获取结果列表错误:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
@@ -155,8 +111,10 @@ export async function POST(request: Request) {
     // 拆分 dedup:
     //  - draft  → 同一份草稿 upsert(同 user+quiz 仅 1 份)
     //  - submitted → 直接 insert 新行,允许 N 份历史;同时给主观题调 AI 拿 aiComment
+    //
+    //  防抖: submitted 在 30s 内同一 (userId, quizId) 只创建一条,
+    //  重复请求直接返回已有记录（防止快速双击产生重复数据）
     let result: any;
-    let enrichedResults: any[] = answerResults;
 
     if (status === 'draft') {
       // 草稿 upsert:有则 update / 无则 create
@@ -186,30 +144,21 @@ export async function POST(request: Request) {
             })
           : await prisma.quizResult.create({ data: upsert.data });
     } else {
-      // submitted:AI 批阅 + 直接 create 新行(允许 N 份历史)
-      const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
-      let questions: any[] = [];
-      try {
-        questions = JSON.parse(quiz?.questions ?? '[]');
-      } catch {
-        questions = [];
+      // 防抖：30s 内同一 (userId, quizId) 只允许一条 submitted 记录
+      const recentDedup = await prisma.quizResult.findFirst({
+        where: {
+          userId: payload.userId,
+          quizId,
+          status: 'submitted',
+          submittedAt: { gte: new Date(Date.now() - 30_000) },
+        },
+        orderBy: { submittedAt: 'desc' },
+      });
+      if (recentDedup) {
+        return jsonFixed({ result: safeResult(recentDedup) });
       }
 
-      enrichedResults = await Promise.all(
-        (answerResults as any[]).map(async (r: any) => {
-          const q = questions.find((qq: any) => qq.id === r.questionId);
-          if (!q || !['essay', 'code', 'interview'].includes(q.type)) {
-            return r;
-          }
-          const refAnswer =
-            q.type === 'essay' || q.type === 'interview'
-              ? q.referenceAnswer ?? ''
-              : '';
-          const comment = await gradeOneQuestion(q, r.userAnswer ?? '', refAnswer);
-          return comment ? { ...r, aiComment: comment } : r;
-        }),
-      );
-
+      // submitted: 直接 create 新行(允许 N 份历史)，AI 评分异步进行不阻塞返回
       result = await prisma.quizResult.create({
         data: {
           userId: payload.userId,
@@ -217,7 +166,7 @@ export async function POST(request: Request) {
           name: name || '未命名',
           score,
           totalScore,
-          results: JSON.stringify(enrichedResults),
+          results: JSON.stringify(answerResults),
           status: 'submitted',
           submittedAt: new Date(),
         },
@@ -239,7 +188,7 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json({ result: safeResult(result) });
+    return jsonFixed({ result: safeResult(result) });
   } catch (error) {
     console.error('创建结果错误:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });

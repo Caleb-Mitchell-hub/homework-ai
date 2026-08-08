@@ -29,6 +29,7 @@ export default function ParseProgressDialog({
   onCancel,
 }: Props) {
   const [state, setState] = useState<ParseProgress>({ progress: 0, message: '准备中...' });
+  const [streamContent, setStreamContent] = useState('');
   const completedRef = useRef(false);
 
   // Effect deps intentionally only include `open`. The effect should only run
@@ -40,6 +41,7 @@ export default function ParseProgressDialog({
     if (!open) return;
     completedRef.current = false;
     setState({ progress: 0, message: '准备中...' });
+    setStreamContent('');
 
     const ctrl = new AbortController();
     const prevOverflow = document.body.style.overflow;
@@ -76,18 +78,25 @@ export default function ParseProgressDialog({
             if (!line) continue;
             const data = line.replace(/^data: /, '').trim();
             try {
-              const evt: ParseProgress = JSON.parse(data);
-              setState(evt);
-              if (evt.error) {
+              const evt = JSON.parse(data);
+              // delta 事件: 逐字流式文本
+              if (evt.type === 'delta') {
+                setStreamContent((prev) => prev + (evt.content ?? ''));
+                continue;
+              }
+              // progress / complete / error 事件
+              const progressEvt = evt as ParseProgress;
+              setState(progressEvt);
+              if (progressEvt.error) {
                 if (!completedRef.current) {
                   completedRef.current = true;
-                  onError(evt.error);
+                  onError(progressEvt.error);
                 }
                 await reader.cancel().catch(() => {});
                 return;
               }
-              if (evt.progress === 100) {
-                if (!evt.questions) {
+              if (progressEvt.progress === 100) {
+                if (!progressEvt.questions) {
                   if (!completedRef.current) {
                     completedRef.current = true;
                     onError('解析响应格式异常');
@@ -97,7 +106,7 @@ export default function ParseProgressDialog({
                 }
                 if (!completedRef.current) {
                   completedRef.current = true;
-                  onComplete(evt.questions);
+                  onComplete(progressEvt.questions);
                 }
                 await reader.cancel().catch(() => {});
                 return;
@@ -143,7 +152,7 @@ export default function ParseProgressDialog({
       aria-modal="true"
       aria-labelledby="parse-progress-title"
     >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+      <div className={`bg-white rounded-2xl shadow-2xl w-full p-6 ${isAi && streamContent ? 'max-w-xl' : 'max-w-md'}`}>
         <h3 id="parse-progress-title" className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
           {isAi ? '🧠 AI 解析中' : '⚡ 本地解析中'}
           <span className="text-[11px] text-slate-400 font-normal">{state.progress}%</span>
@@ -162,6 +171,15 @@ export default function ParseProgressDialog({
           />
         </div>
         <p className="text-[12px] text-slate-500 min-h-[1.25rem]">{state.message}</p>
+
+        {/* AI 模式: 展示实时流式文本 */}
+        {isAi && streamContent && (
+          <div className="mt-3 max-h-48 overflow-y-auto rounded-lg bg-slate-900 p-3">
+            <pre className="text-[11px] text-green-400 whitespace-pre-wrap break-all font-mono leading-relaxed">
+              {streamContent}
+            </pre>
+          </div>
+        )}
 
         {!state.error && (
           <button

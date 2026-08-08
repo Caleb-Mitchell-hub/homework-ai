@@ -30,7 +30,9 @@ export async function generateReport(opts: {
   score: number;
   totalScore: number;
   byType: Record<string, { total: number; correct: number; correctRate: number }>;
+  byDifficulty: Record<string, { total: number; correct: number; correctRate: number }>;
   wrongQuestions: WrongQuestion[];
+  difficultyProfile?: string;
 }): Promise<GenerateReportResult> {
   // 1) 缓存命中?
   const existing = await prisma.aIReport.findUnique({
@@ -84,7 +86,9 @@ export async function generateReport(opts: {
       score: opts.score,
       totalScore: opts.totalScore,
       byType: opts.byType,
+      byDifficulty: opts.byDifficulty,
       wrongQuestions: opts.wrongQuestions,
+      difficultyProfile: opts.difficultyProfile,
     });
     const raw = await callChat({
       baseURL: provider.baseURL,
@@ -92,7 +96,7 @@ export async function generateReport(opts: {
       model: provider.model,
       messages: [{ role: 'system', content: prompt }],
       jsonMode: true,
-      maxTokens: 1500,
+      maxTokens: 2000,
       temperature: 0.5,
     });
     const parsed = JSON.parse(raw);

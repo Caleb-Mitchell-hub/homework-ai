@@ -1,6 +1,6 @@
 import { callChat, callChatStream } from './providers';
 import { QUESTION_PARSE_PROMPT } from './prompt';
-import { normalizeAIOutputToQuestions } from './normalize';
+import { normalizeAIOutputToQuestions, autoConvertEssayToInterview } from './normalize';
 import { decryptApiKey } from './crypto';
 import type { Question } from '@/types';
 
@@ -95,8 +95,8 @@ function extractQuestions(rawContent: string): Loose[] | null {
 }
 
 /**
- * 流式 AI 解析:优先使用 SSE streaming 获取实时字符进度,
- * 失败时自动回退到非流式调用。
+ * 流式 AI 解析:强制使用 SSE streaming 获取实时字符进度。
+ * 不提供非流式回退 —— 流式失败直接报错。
  */
 export async function* aiParseQuestionsStream(opts: {
   text: string;
@@ -105,42 +105,47 @@ export async function* aiParseQuestionsStream(opts: {
   estimatedOutputTokens?: number;
 }): AsyncGenerator<
   | { type: 'progress'; data: ParseProgressEvent }
+  | { type: 'delta'; content: string }
   | { type: 'complete'; questions: Question[] }
   | { type: 'error'; error: string }
 > {
   const apiKey = decryptApiKey(opts.provider.apiKeyCipher);
   const text = opts.text.slice(0, MAX_TEXT_CHARS);
   const maxTokens = opts.estimatedOutputTokens ?? 8000;
-  const chatOpts = {
-    baseURL: opts.provider.baseURL,
-    apiKey,
-    model: opts.provider.model,
-    messages: [
-      { role: 'system' as const, content: QUESTION_PARSE_PROMPT },
-      { role: 'user' as const, content: text },
-    ],
-    maxTokens,
-    signal: opts.signal,
-  };
 
   yield { type: 'progress', data: { progress: 5, message: '正在准备...', receivedChars: 0 } };
   if (opts.signal?.aborted) return;
 
-  // ── 优先流式调用 (实时字符进度) ──
+  // ── 强制流式调用 (实时字符进度) ──
   let rawContent = '';
-  let streamed = false;
   const expectedChars = Math.round(maxTokens * CHARS_PER_TOKEN_ESTIMATE);
   let lastReportedChars = 0;
 
-  try {
-    yield { type: 'progress', data: { progress: 8, message: 'AI 正在解析题目...', receivedChars: 0, expectedChars } };
+  yield { type: 'progress', data: { progress: 8, message: 'AI 正在解析题目...', receivedChars: 0, expectedChars } };
 
-    for await (const chunk of callChatStream({ ...chatOpts, jsonMode: true })) {
+  try {
+    for await (const chunk of callChatStream({
+      baseURL: opts.provider.baseURL,
+      apiKey,
+      model: opts.provider.model,
+      messages: [
+        { role: 'system' as const, content: QUESTION_PARSE_PROMPT },
+        { role: 'user' as const, content: text },
+      ],
+      // 不传 jsonMode: true —— jsonMode 会让 AI Provider 内部缓冲完整 JSON
+      // 再发送，导致所有 chunk 几乎同时到达，流式输出形同虚设。
+      // extractQuestions() 已有 code fence 剥离 + 截断修复，能容错非纯 JSON 输出。
+      jsonMode: false,
+      maxTokens,
+      signal: opts.signal,
+    })) {
       if (opts.signal?.aborted) return;
       if (chunk.done) break;
       rawContent += chunk.delta;
+      // 每个 delta 都发到前端，实现真正的逐字流式输出 (同追问)
+      const content = chunk.delta;
+      yield { type: 'delta', content };
       const charCount = rawContent.length;
-      // 节流:每 N 字符上报一次进度 (10%→85% 映射到字符进度)
       if (charCount - lastReportedChars >= PROGRESS_REPORT_INTERVAL_CHARS) {
         lastReportedChars = charCount;
         const pct = Math.min(85, 10 + Math.round((charCount / expectedChars) * 75));
@@ -150,26 +155,11 @@ export async function* aiParseQuestionsStream(opts: {
         };
       }
     }
-    streamed = true;
-  } catch (streamErr) {
-    // 流式失败 → 回退到非流式
+  } catch (err) {
     if (opts.signal?.aborted) return;
-    const msg = streamErr instanceof Error ? streamErr.message : String(streamErr);
-    yield {
-      type: 'progress',
-      data: { progress: 12, message: `流式传输失败(${msg.slice(0, 60)})，切换普通模式...`, receivedChars: 0 },
-    };
-  }
-
-  // ── 非流式回退 ──
-  if (!streamed) {
-    try {
-      rawContent = await callChat({ ...chatOpts, jsonMode: true });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      yield { type: 'error', error: `AI 调用失败: ${msg.slice(0, 200)}` };
-      return;
-    }
+    const msg = err instanceof Error ? err.message : String(err);
+    yield { type: 'error', error: `AI 流式调用失败: ${msg.slice(0, 200)}` };
+    return;
   }
 
   if (opts.signal?.aborted) return;
@@ -194,7 +184,7 @@ export async function* aiParseQuestionsStream(opts: {
     data: { progress: 93, message: '规范化题目...', receivedChars: rawContent.length },
   };
 
-  const questions = normalizeAIOutputToQuestions(arr, genId);
+  const questions = autoConvertEssayToInterview(normalizeAIOutputToQuestions(arr, genId));
   yield { type: 'complete', questions };
 }
 
@@ -223,7 +213,7 @@ export async function aiParseQuestions(opts: {
       });
       const arr = extractQuestions(content);
       if (!arr) throw new Error('AI 返回不是数组');
-      return normalizeAIOutputToQuestions(arr, genId);
+      return autoConvertEssayToInterview(normalizeAIOutputToQuestions(arr, genId));
     } catch (err) {
       lastErr = err;
     }

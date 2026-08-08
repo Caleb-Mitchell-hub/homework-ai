@@ -45,7 +45,7 @@ describe('GET /api/user/credits', () => {
     const res = await GET(req as any);
     const data = await res.json();
     expect(res.status).toBe(200);
-    expect(data).toEqual({ balance: 50, checkedIn: false, checkInReward: 5 });
+    expect(data).toEqual({ balance: 50, checkedIn: false, checkInReward: 30 });
   });
 
   it('今日已签到: checkedIn=true', async () => {
@@ -76,6 +76,6 @@ describe('GET /api/user/credits', () => {
     });
     const res = await GET(req as any);
     const data = await res.json();
-    expect(data).toEqual({ balance: 0, checkedIn: false, checkInReward: 5 });
+    expect(data).toEqual({ balance: 0, checkedIn: false, checkInReward: 30 });
   });
 });

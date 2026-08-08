@@ -31,13 +31,17 @@ export default function AIFollowUp({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // 自动滚动到底部
+  // 自动滚动到底部（仅滚动聊天面板内部，不影响页面滚动位置）
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = chatContainerRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
   }, [messages, loading]);
 
   // 展开时聚焦输入框
@@ -53,13 +57,13 @@ export default function AIFollowUp({
 
     const userMsg: Message = { role: 'user', content: text };
     const newMessages = [...messages, userMsg];
-    // 截断超长历史
     if (newMessages.length > MAX_MESSAGES) {
       newMessages.splice(0, newMessages.length - MAX_MESSAGES);
     }
     setMessages(newMessages);
     setInput('');
     setError(null);
+    setStreamingContent('');
     setLoading(true);
 
     try {
@@ -80,19 +84,47 @@ export default function AIFollowUp({
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || '追问失败');
+      if (!res.ok || !res.body) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
       }
 
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: data.content },
-      ]);
+      // 流式消费 SSE
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop() ?? '';
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line) continue;
+          const data = line.replace(/^data: /, '').trim();
+          try {
+            const evt = JSON.parse(data);
+            if (evt.type === 'delta') {
+              setStreamingContent((prev) => prev + (evt.content ?? ''));
+            } else if (evt.type === 'done') {
+              setMessages((prev) => [
+                ...prev,
+                { role: 'assistant', content: evt.fullContent ?? streamingContent },
+              ]);
+              setStreamingContent('');
+            } else if (evt.type === 'error') {
+              setError(evt.message || '追问失败');
+            }
+          } catch { /* ignore malformed events */ }
+        }
+      }
     } catch (err: any) {
       setError(err?.message || '追问失败，请稍后重试');
     } finally {
       setLoading(false);
+      setStreamingContent('');
     }
   };
 
@@ -140,7 +172,7 @@ export default function AIFollowUp({
       {isOpen && (
         <div className="mt-2 border border-indigo-100 rounded-xl overflow-hidden bg-white/60">
           {/* 对话区 */}
-          <div className="max-h-64 overflow-y-auto px-3 py-2.5 space-y-2.5">
+          <div ref={chatContainerRef} className="max-h-64 overflow-y-auto px-3 py-2.5 space-y-2.5">
             {messages.length === 0 && !loading && (
               <div className="text-[12px] text-slate-400 text-center py-4">
                 输入你的疑问，AI 会基于题目内容为你解答
@@ -168,29 +200,32 @@ export default function AIFollowUp({
               </div>
             ))}
 
-            {/* loading 态 */}
+            {/* loading / streaming 态 */}
             {loading && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] px-3 py-2 rounded-xl bg-slate-100 text-slate-700 rounded-bl-sm">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className="inline-block w-2 h-2 rounded-full bg-indigo-400 animate-bounce"
-                      style={{ animationDelay: '0ms' }}
-                    />
-                    <span
-                      className="inline-block w-2 h-2 rounded-full bg-indigo-400 animate-bounce"
-                      style={{ animationDelay: '150ms' }}
-                    />
-                    <span
-                      className="inline-block w-2 h-2 rounded-full bg-indigo-400 animate-bounce"
-                      style={{ animationDelay: '300ms' }}
-                    />
-                  </div>
+                  {streamingContent ? (
+                    <MarkdownView content={streamingContent} size="sm" />
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block w-2 h-2 rounded-full bg-indigo-400 animate-bounce"
+                        style={{ animationDelay: '0ms' }}
+                      />
+                      <span
+                        className="inline-block w-2 h-2 rounded-full bg-indigo-400 animate-bounce"
+                        style={{ animationDelay: '150ms' }}
+                      />
+                      <span
+                        className="inline-block w-2 h-2 rounded-full bg-indigo-400 animate-bounce"
+                        style={{ animationDelay: '300ms' }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            <div ref={bottomRef} />
           </div>
 
           {/* 错误提示 */}

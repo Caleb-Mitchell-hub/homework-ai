@@ -24,13 +24,13 @@ beforeEach(() => {
 });
 
 describe('POST /api/user/checkin', () => {
-  it('首次签到: 200 + { ok: true, balance, credit: 5 }', async () => {
-    vi.mocked(checkInToday).mockResolvedValue({ balance: 55, credit: 5 });
+  it('首次签到: 200 + { ok: true, balance, credit: 30 }', async () => {
+    vi.mocked(checkInToday).mockResolvedValue({ balance: 80, credit: 30 });
     const req = new Request('http://localhost/api/user/checkin', { method: 'POST' });
     const res = await POST(req as any);
     const data = await res.json();
     expect(res.status).toBe(200);
-    expect(data).toEqual({ ok: true, balance: 55, credit: 5 });
+    expect(data).toEqual({ ok: true, balance: 80, credit: 30 });
     expect(checkInToday).toHaveBeenCalledWith('u1');
   });
 

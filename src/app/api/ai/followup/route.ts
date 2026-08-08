@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { callChat } from '@/lib/ai/providers';
+import { callChatStream } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
 import { buildFollowUpPrompt } from '@/lib/ai/followup-prompt';
 
@@ -58,7 +58,6 @@ export async function POST(request: NextRequest) {
     { role: 'system', content: systemPrompt },
   ];
 
-  // 追加对话历史
   if (Array.isArray(conversationHistory)) {
     for (const msg of conversationHistory as Message[]) {
       if (msg.role === 'user' || msg.role === 'assistant') {
@@ -67,36 +66,70 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 当前追问
   messages.push({ role: 'user', content: newQuestion.trim() });
 
-  // 5. 调 AI（不扣积分、不写缓存）
-  try {
-    const apiKey = decryptApiKey(provider.apiKeyCipher);
-    const content = await callChat({
-      baseURL: provider.baseURL,
-      apiKey,
-      model: provider.model,
-      messages: messages as any,
-      signal: request.signal,
-      maxTokens: 1000,
-      temperature: 0.5,
-    });
+  const apiKey = decryptApiKey(provider.apiKeyCipher);
 
-    if (!content?.trim()) {
-      return NextResponse.json(
-        { error: 'AI 返回了空内容，请换个问法重试' },
-        { status: 502 },
-      );
-    }
+  // 5. 流式 SSE 响应
+  const stream = new ReadableStream({
+    async start(controller) {
+      const enc = new TextEncoder();
+      const send = (data: object) => {
+        try {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch { /* controller closed */ }
+      };
 
-    return NextResponse.json({ content });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[ai/followup] error:', msg);
-    return NextResponse.json(
-      { error: `AI 调用失败: ${msg.slice(0, 200)}` },
-      { status: 502 },
-    );
-  }
+      let fullContent = '';
+
+      try {
+        for await (const chunk of callChatStream({
+          baseURL: provider.baseURL,
+          apiKey,
+          model: provider.model,
+          messages: messages as any,
+          signal: request.signal,
+          maxTokens: 1000,
+          temperature: 0.5,
+        })) {
+          if (chunk.done) break;
+          fullContent += chunk.delta;
+          send({ type: 'delta', content: chunk.delta });
+        }
+
+        if (!fullContent.trim()) {
+          send({ type: 'error', message: 'AI 返回了空内容，请换个问法重试' });
+          return;
+        }
+
+        send({ type: 'done', fullContent });
+
+        // 6. 持久化（流完成后异步写入，不影响响应）
+        try {
+          await prisma.aIFollowUp.createMany({
+            data: [
+              { userId, questionId, role: 'user', content: newQuestion.trim() },
+              { userId, questionId, role: 'assistant', content: fullContent },
+            ],
+          });
+        } catch (e) {
+          console.error('[ai/followup] 持久化失败:', e);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err ?? '未知错误');
+        console.error('[ai/followup] stream error:', msg);
+        send({ type: 'error', message: `AI 调用失败: ${msg.slice(0, 200)}` });
+      } finally {
+        try { controller.close(); } catch {}
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+    },
+  });
 }

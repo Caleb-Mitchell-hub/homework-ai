@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
 import { verifyAdminToken } from '@/lib/admin-auth';
 
-const REWARD = 5;
+const REWARD = 30;
 
 export async function GET(request: NextRequest) {
   const token = getTokenFromHeaders(request);
@@ -21,8 +21,10 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = userPayload!.userId;
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  // 使用 en-CA locale 直接输出 YYYY-MM-DD 格式的北京时间日期，
+  // 避免 new Date(string) 解析 locale 字符串在不同 Node 版本/时区下的不确定性
+  const beijingDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+  const today = new Date(`${beijingDateStr}T00:00:00+08:00`);
 
   const [user, todayCheckIn] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { credits: true } }),

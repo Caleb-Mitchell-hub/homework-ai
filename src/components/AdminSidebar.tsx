@@ -80,6 +80,16 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+    key: 'credits',
+    label: '积分与使用',
+    path: '/admin/credits',
+    icon: (
+      <svg className="w-[15px] h-[15px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.306 0 2.418.535 3.197 1.363M12 8V7m0 9v1m-9-4a9 9 0 1118 0 9 9 0 01-18 0z" />
+      </svg>
+    ),
+  },
 ];
 
 const QUICK_ITEMS = [

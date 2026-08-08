@@ -137,3 +137,271 @@ body {
 .anim-trigger-press {
   animation: drawer-trigger-press 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
+/* ─────────────────────────────────────────────
+   Markdown 渲染样式 (供 MarkdownView 使用)
+   ───────────────────────────────────────────── */
+
+.markdown-body {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: rgb(51 65 85); /* slate-700 */
+  word-wrap: break-word;
+}
+
+.markdown-body > * + * {
+  margin-top: 0.65em;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  color: rgb(15 23 42); /* slate-900 */
+  margin-top: 1em;
+}
+
+.markdown-body h1 { font-size: 1.4em; border-bottom: 1px solid rgb(226 232 240); padding-bottom: 0.2em; }
+.markdown-body h2 { font-size: 1.25em; border-bottom: 1px solid rgb(241 245 249); padding-bottom: 0.2em; }
+.markdown-body h3 { font-size: 1.1em; }
+.markdown-body h4 { font-size: 1em; }
+.markdown-body h5 { font-size: 0.95em; }
+.markdown-body h6 { font-size: 0.9em; color: rgb(100 116 139); }
+
+.markdown-body p { margin: 0.5em 0; }
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
+
+.markdown-body li {
+  margin: 0.2em 0;
+}
+
+.markdown-body li > p {
+  margin: 0.2em 0;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid rgb(196 181 253); /* violet-300 */
+  padding: 0.25em 0.9em;
+  color: rgb(71 85 105);
+  background: rgb(245 243 255); /* violet-50 */
+  border-radius: 0 4px 4px 0;
+}
+
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid rgb(226 232 240);
+  margin: 1.2em 0;
+}
+
+/* 行内代码 */
+.markdown-body :not(pre) > code {
+  background: rgb(241 245 249);
+  color: rgb(124 58 237); /* violet-700 */
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.92em;
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+/* 代码块 */
+.markdown-body .code-block {
+  position: relative;
+  margin: 0.8em 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgb(30 41 59);
+  background: rgb(15 23 42); /* slate-900 */
+}
+
+.markdown-body .code-block-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.35em 0.7em;
+  background: rgb(30 41 59); /* slate-800 */
+  border-bottom: 1px solid rgb(51 65 85);
+  font-size: 10.5px;
+  color: rgb(148 163 184); /* slate-400 */
+  user-select: none;
+}
+
+.markdown-body .code-block-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.markdown-body .code-block-lang {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  flex: 1;
+}
+
+.markdown-body .code-block-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.15em 0.5em;
+  font-size: 10.5px;
+  color: rgb(203 213 225);
+  background: rgb(51 65 85);
+  border: 1px solid rgb(71 85 105);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.markdown-body .code-block-copy:hover {
+  background: rgb(71 85 105);
+  color: rgb(241 245 249);
+}
+
+.markdown-body .code-block-copy:active {
+  transform: translateY(1px);
+}
+
+.markdown-body .code-block pre {
+  background: rgb(15 23 42); /* slate-900 */
+  color: rgb(226 232 240);
+  padding: 0.7em 0.9em;
+  border-radius: 0;
+  overflow-x: auto;
+  font-size: 11.5px;
+  line-height: 1.55;
+  border: none;
+  margin: 0;
+}
+
+.markdown-body pre {
+  background: rgb(15 23 42); /* slate-900 */
+  color: rgb(226 232 240);
+  padding: 0.7em 0.9em;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 11.5px;
+  line-height: 1.55;
+  border: 1px solid rgb(30 41 59);
+}
+
+.markdown-body pre code {
+  background: transparent !important;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+/* 表格 */
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.95em;
+  margin: 0.6em 0;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid rgb(226 232 240);
+  padding: 0.35em 0.7em;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: rgb(248 250 252);
+  font-weight: 600;
+}
+
+/* 链接 */
+.markdown-body a {
+  color: rgb(2 132 199); /* sky-600 */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body a:hover {
+  color: rgb(14 165 233);
+}
+
+/* 加粗/斜体 */
+.markdown-body strong { font-weight: 600; color: rgb(15 23 42); }
+.markdown-body em { font-style: italic; }
+
+/* 删除线 (GFM) */
+.markdown-body del { color: rgb(148 163 184); }
+
+/* 任务列表 */
+.markdown-body input[type="checkbox"] {
+  margin-right: 0.35em;
+  vertical-align: middle;
+}
+
+/* 图片 */
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 0.4em 0;
+}
+
+/* ─────────────────────────────────────────────
+   highlight.js GitHub Dark 主题 (代码块配色)
+   ───────────────────────────────────────────── */
+
+.hljs { color: #c9d1d9; background: transparent; }
+.hljs-comment, .hljs-quote { color: #8b949e; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-section, .hljs-link {
+  color: #ff7b72;
+}
+.hljs-function .hljs-keyword { color: #ff7b72; }
+.hljs-subst { color: #c9d1d9; }
+.hljs-string, .hljs-attr, .hljs-symbol, .hljs-bullet, .hljs-addition {
+  color: #a5d6ff;
+}
+.hljs-title, .hljs-name, .hljs-type, .hljs-built_in, .hljs-class .hljs-title {
+  color: #d2a8ff; font-weight: 600;
+}
+.hljs-number, .hljs-meta { color: #79c0ff; }
+.hljs-variable, .hljs-template-variable, .hljs-regexp {
+  color: #ffa657;
+}
+.hljs-tag, .hljs-deletion { color: #ffa657; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 700; }
+
+/* ─────────────────────────────────────────────
+   KaTeX 公式配色微调 (浅色背景)
+   ───────────────────────────────────────────── */
+
+.markdown-body .katex {
+  font-size: 1.05em;
+  color: rgb(15 23 42);
+}
+
+.markdown-body .katex-display {
+  margin: 0.8em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.4em 0;
+}
+
+.markdown-body .katex-display > .katex {
+  display: inline-block;
+  text-align: center;
+}
+
+/* 字号变体 */
+.markdown-sm { font-size: 12.5px; }
+.markdown-base { font-size: 14px; }
+.markdown-lg { font-size: 16px; }
+.markdown-xl { font-size: 18px; }

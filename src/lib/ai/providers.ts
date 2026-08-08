@@ -1,3 +1,6 @@
+// 副作用:安装全局 fetch 代理 (从 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY 读取)
+import './proxy';
+
 export interface AIChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string | Array<
@@ -27,19 +30,20 @@ export async function callChat(opts: CallChatOpts): Promise<string> {
   const url = `${opts.baseURL.replace(/\/$/, '')}/chat/completions`;
   // 优先用调用方传入的 signal，否则创建默认超时
   const signal = opts.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
+  const body = {
+    model: opts.model,
+    messages: opts.messages,
+    response_format: opts.jsonMode ? { type: 'json_object' } : undefined,
+    temperature: opts.temperature ?? 0.2,
+    max_tokens: opts.maxTokens ?? 16000,
+  };
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${opts.apiKey}`,
     },
-    body: JSON.stringify({
-      model: opts.model,
-      messages: opts.messages,
-      response_format: opts.jsonMode ? { type: 'json_object' } : undefined,
-      temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? 16000,
-    }),
+    body: JSON.stringify(body),
     signal,
   });
   if (!res.ok) {

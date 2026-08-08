@@ -13,6 +13,7 @@ import AIExplainPanel from '@/components/AIExplainPanel';
 import AIFollowUp from '@/components/AIFollowUp';
 import ManualGradePanel from '@/components/ManualGradePanel';
 import MarkdownView from '@/components/MarkdownView';
+import NotePanel from '@/components/NotePanel';
 import { useAuth } from '@/contexts/AuthContext';
 
 const typeNames: Record<string, string> = {
@@ -41,6 +42,14 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
   // 记录每道题的 AI 解析内容，供追问上下文使用
   const [explainContents, setExplainContents] = useState<Record<string, string>>({});
   const { token } = useAuth();
+  // 笔记面板状态
+  const [notePanelOpen, setNotePanelOpen] = useState(false);
+  const [notePanelQId, setNotePanelQId] = useState<string | undefined>();
+  const [notePreset, setNotePreset] = useState<{ content: string; source: 'ai_explain' | 'reference_answer' } | undefined>();
+  // 正在 AI 评分的题目
+  const [gradingQids, setGradingQids] = useState<Set<string>>(new Set());
+  // 动态评分结果（用于即时显示，不必刷新页面）
+  const [dynamicScores, setDynamicScores] = useState<Record<string, { interviewScore: number; interviewFeedback: any }>>({});
 
   const toggle = (id: string) => {
     setExpanded((prev) => {
@@ -61,7 +70,45 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
     }
   };
 
-  const getRecord = (qid: string) => result.results.find((r) => r.questionId === qid);
+  const getRecord = (qid: string) => {
+    const base = result.results.find((r) => r.questionId === qid);
+    const dyn = dynamicScores[qid];
+    if (dyn && base) {
+      return { ...base, interviewScore: dyn.interviewScore, interviewFeedback: dyn.interviewFeedback };
+    }
+    return base;
+  };
+
+  /** 对单道面试题触发 AI 评分 */
+  async function triggerGrade(questionId: string) {
+    if (!token || !result?.id) return;
+    setGradingQids((prev) => new Set(prev).add(questionId));
+    try {
+      const res = await fetch('/api/ai/grade-interview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ resultId: result.id, questionId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDynamicScores((prev) => ({
+          ...prev,
+          [questionId]: { interviewScore: data.interviewScore, interviewFeedback: data.interviewFeedback },
+        }));
+      } else {
+        const err = await res.json();
+        alert(err.error || 'AI 评分失败');
+      }
+    } catch {
+      alert('AI 评分请求失败');
+    } finally {
+      setGradingQids((prev) => {
+        const next = new Set(prev);
+        next.delete(questionId);
+        return next;
+      });
+    }
+  }
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4">
@@ -277,8 +324,20 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
 
                   {/* 你的答案 */}
                   <div>
-                    <div className="text-[10.5px] tracking-[0.2em] uppercase text-slate-400 mb-1.5">
-                      你的答案
+                    <div className="text-[10.5px] tracking-[0.2em] uppercase text-slate-400 mb-1.5 flex items-center justify-between">
+                      <span>你的答案</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNotePanelQId(q.id);
+                          setNotePreset(undefined);
+                          setNotePanelOpen(true);
+                        }}
+                        className="text-[11px] text-indigo-500 hover:text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                        title="为此题记笔记"
+                      >
+                        笔记
+                      </button>
                     </div>
                     {isCode ? (
                       // 代码题作答区：等宽字体 + 浅灰底
@@ -304,6 +363,95 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                     )}
                   </div>
 
+                  {/* 面试题/简答题 AI 评分 — 兼容 interview 和 essay 两种类型 */}
+                  {(q.type === 'interview' || q.type === 'essay') && (
+                    <div>
+                      <div className="text-[10.5px] tracking-[0.2em] uppercase text-slate-400 mb-1.5 flex items-center justify-between">
+                        <span>AI 评分</span>
+                        {/* 每题笔记入口 */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNotePanelQId(q.id);
+                            setNotePreset(undefined);
+                            setNotePanelOpen(true);
+                          }}
+                          className="text-[11px] text-indigo-500 hover:text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                          title="为此题记笔记"
+                        >
+                          笔记
+                        </button>
+                      </div>
+                      {(() => {
+                        const score = (r as any)?.interviewScore;
+                        if (typeof score === 'number') {
+                          return (
+                            <div className="p-3 rounded-lg bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xl font-bold ${
+                                  score >= 80 ? 'text-emerald-600' :
+                                  score >= 60 ? 'text-amber-600' :
+                                  'text-red-500'
+                                }`}>
+                                  {score}<span className="text-sm font-normal text-slate-400">/100</span>
+                                </span>
+                              </div>
+                              {(r as any)?.interviewFeedback?.strengths?.length > 0 && (
+                                <div className="text-[12px]">
+                                  <span className="text-emerald-600 font-medium">✅ 亮点：</span>
+                                  {(r as any).interviewFeedback.strengths.map((s: string, i: number) => (
+                                    <span key={i} className="text-slate-600">{s}{i < (r as any).interviewFeedback.strengths.length - 1 ? '；' : ''}</span>
+                                  ))}
+                                </div>
+                              )}
+                              {(r as any)?.interviewFeedback?.weaknesses?.length > 0 && (
+                                <div className="text-[12px]">
+                                  <span className="text-amber-600 font-medium">⚠️ 不足：</span>
+                                  {(r as any).interviewFeedback.weaknesses.map((w: string, i: number) => (
+                                    <span key={i} className="text-slate-600">{w}{i < (r as any).interviewFeedback.weaknesses.length - 1 ? '；' : ''}</span>
+                                  ))}
+                                </div>
+                              )}
+                              {(r as any)?.interviewFeedback?.suggestion && (
+                                <div className="text-[12px]">
+                                  <span className="text-blue-600 font-medium">💡 建议：</span>
+                                  <span className="text-slate-600">{(r as any).interviewFeedback.suggestion}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        // 无评分 → 显示触发按钮
+                        const isGrading = gradingQids.has(q.id);
+                        return (
+                          <div className="p-3 rounded-lg bg-amber-50/50 border border-dashed border-amber-200 text-center">
+                            <p className="text-[12px] text-amber-600 mb-2">暂未评分</p>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                triggerGrade(q.id);
+                              }}
+                              disabled={isGrading}
+                              className="px-4 py-1.5 text-[12px] bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 disabled:opacity-50 transition-colors"
+                            >
+                              {isGrading ? (
+                                <span className="flex items-center gap-1.5">
+                                  <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                  </svg>
+                                  AI 评分中...
+                                </span>
+                              ) : (
+                                'AI 评分'
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
                   {/* 参考答案 —— 所有题型统一展示 */}
                   <div>
                     <div className="text-[10.5px] tracking-[0.2em] uppercase text-slate-400 mb-1.5 flex items-center gap-1.5">
@@ -316,6 +464,11 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                       {isEssay && (
                         <span className="px-1.5 py-0.5 rounded bg-pink-50 text-pink-600 text-[9.5px] tracking-wider">
                           简答
+                        </span>
+                      )}
+                      {q.type === 'interview' && (
+                        <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[9.5px] tracking-wider">
+                          面试
                         </span>
                       )}
                     </div>
@@ -355,14 +508,17 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                     )}
                   </div>
 
-                  {/* AI 解析 - 仅错题显示 */}
-                  {correct === false && token && (
+                  {/* AI 解析 - 错题 + 主观题显示 (主观题无法自动判对错, 始终提供 AI 解析) */}
+                  {token && correct !== true && (
                     <div className="pt-2 border-t border-slate-200/60">
                       <div className="text-[10.5px] tracking-[0.2em] uppercase text-slate-400 mb-1.5">AI 解析</div>
                       <AIExplainPanel
                         questionId={q.id}
                         questionContent={q.title}
                         questionType={q.type}
+                        userAnswer={userAnswer}
+                        correctAnswer={correctText}
+                        options={(q as any).options}
                         onNeedCredits={(req, bal) => {
                           alert(`积分不足: 需要 ${req} 积分, 当前 ${bal} 积分。请前往 /credits 充值`);
                           window.location.href = '/credits';
@@ -374,8 +530,8 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                     </div>
                   )}
 
-                  {/* 人工批阅 - 仅主观题 */}
-                  {(q.type === 'essay' || q.type === 'code' || q.type === 'interview') && result?.id && (
+                  {/* 人工批阅 - 仅主观题(essay/code, interview 由 AI 自动打分) */}
+                  {(q.type === 'essay' || q.type === 'code') && result?.id && (
                     <ManualGradePanel
                       resultId={result.id}
                       questionId={q.id}
@@ -408,6 +564,17 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
           );
         })}
       </ul>
+
+      {/* 每题笔记面板 */}
+      <NotePanel
+        open={notePanelOpen}
+        onClose={() => { setNotePanelOpen(false); setNotePreset(undefined); }}
+        questionId={notePanelQId}
+        quizId={quiz.id}
+        resultId={result?.id}
+        presetContent={notePreset?.content}
+        presetSource={notePreset?.source}
+      />
     </div>
   );
 }

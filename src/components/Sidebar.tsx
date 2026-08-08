@@ -352,11 +352,11 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
                 }
-                label="手动新增题目"
-                active={pathname === '/upload/manual'}
+                label="我的笔记"
+                active={pathname === '/notes'}
                 onClick={() => {
                   onClose();
-                  router.push('/upload/manual');
+                  router.push('/notes');
                 }}
               />
             </>
@@ -410,9 +410,13 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
                         {uc.name}
                       </button>
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          quizCat.removeUserCategory(`user:${uc.id}`);
+                          try {
+                            await quizCat.removeUserCategory(`user:${uc.id}`);
+                          } catch {
+                            // 静默失败，不影响使用
+                          }
                         }}
                         className="opacity-0 group-hover/uc:opacity-100 text-slate-400 hover:text-rose-500 transition-all text-[10px]"
                         title="删除此分类"
@@ -432,7 +436,7 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
                   });
                   if (name && name.trim()) {
                     try {
-                      quizCat.addUserCategory(name.trim());
+                      await quizCat.addUserCategory(name.trim());
                     } catch (err: any) {
                       await dialog.alert({
                         title: '创建分类失败',

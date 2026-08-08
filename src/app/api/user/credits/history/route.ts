@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
+import { jsonFixed } from '@/lib/db-date';
 
 export async function GET(request: NextRequest) {
   const token = getTokenFromHeaders(request);
@@ -15,5 +16,5 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
-  return NextResponse.json({ history: ledger });
+  return jsonFixed({ history: ledger });
 }

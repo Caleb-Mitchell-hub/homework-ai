@@ -8,6 +8,7 @@ services:
     environment:
       - DATABASE_URL=mysql://root:password@db:3306/homework_ai
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - TZ=Asia/Shanghai
     depends_on:
       db:
         condition: service_healthy
@@ -15,9 +16,12 @@ services:
 
   db:
     image: mysql:8
+    command:
+      - --default-time-zone=+08:00
     environment:
       - MYSQL_ROOT_PASSWORD=password
       - MYSQL_DATABASE=homework_ai
+      - TZ=Asia/Shanghai
     volumes:
       - mysql_data:/var/lib/mysql
     ports:

@@ -29,13 +29,13 @@ beforeEach(() => {
 });
 
 describe('checkInToday', () => {
-  it('首次签到返回余额=55, credit=5', async () => {
+  it('首次签到返回余额=80, credit=30', async () => {
     txMock.dailyCheckIn.create.mockResolvedValue({});
-    txMock.user.update.mockReturnValue({ credits: 55 });
+    txMock.user.update.mockReturnValue({ credits: 80 });
     txMock.creditLedger.create.mockResolvedValue({});
 
     const result = await checkInToday('u1');
-    expect(result).toEqual({ balance: 55, credit: 5 });
+    expect(result).toEqual({ balance: 80, credit: 30 });
     expect(txMock.dailyCheckIn.create).toHaveBeenCalledTimes(1);
     expect(txMock.user.update).toHaveBeenCalledTimes(1);
     expect(txMock.creditLedger.create).toHaveBeenCalledTimes(1);
@@ -50,7 +50,7 @@ describe('checkInToday', () => {
     expect(txMock.creditLedger.create).not.toHaveBeenCalled();
   });
 
-  it('写 ledger 时 delta=+5, reason=daily_signin, balance=新余额', async () => {
+  it('写 ledger 时 delta=+30, reason=daily_signin, balance=新余额', async () => {
     txMock.dailyCheckIn.create.mockResolvedValue({});
     txMock.user.update.mockReturnValue({ credits: 100 });
     txMock.creditLedger.create.mockResolvedValue({});
@@ -60,7 +60,7 @@ describe('checkInToday', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           userId: 'u1',
-          delta: 5,
+          delta: 30,
           reason: 'daily_signin',
           balance: 100,
         }),
@@ -68,16 +68,16 @@ describe('checkInToday', () => {
     );
   });
 
-  it('user.update 使用 credits increment 5', async () => {
+  it('user.update 使用 credits increment 30', async () => {
     txMock.dailyCheckIn.create.mockResolvedValue({});
-    txMock.user.update.mockReturnValue({ credits: 55 });
+    txMock.user.update.mockReturnValue({ credits: 80 });
     txMock.creditLedger.create.mockResolvedValue({});
 
     await checkInToday('u1');
     expect(txMock.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'u1' },
-        data: { credits: { increment: 5 } },
+        data: { credits: { increment: 30 } },
       })
     );
   });

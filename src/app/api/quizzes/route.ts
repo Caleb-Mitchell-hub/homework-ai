@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { PREFIX_PRESET, PRESET_CATEGORIES } from '@/lib/quizCategories';
+import { autoConvertEssayToInterview } from '@/lib/ai/normalize';
 
 /** 校验并规范化 categoryId。返回 null 表示"未分类"。 */
 function normalizeCategoryId(raw: unknown): string | null {
@@ -129,11 +130,14 @@ export async function POST(request: Request) {
 
     await updateUserActiveTime(payload.userId);
 
-    const { title, questions, fileKey, categoryId, timeLimit } = await request.json();
+    let { title, questions, fileKey, categoryId, timeLimit } = await request.json();
 
     if (!title || !questions) {
       return NextResponse.json({ error: '标题和题目不能为空' }, { status: 400 });
     }
+
+    // 全部 essay → 自动转换为 interview
+    questions = autoConvertEssayToInterview(questions);
 
     const normalizedCategoryId = normalizeCategoryId(categoryId);
     // 答题时长(分钟):0 = 不限时,1~480

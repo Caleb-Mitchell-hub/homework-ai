@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyAdminToken, getTokenFromHeaders } from '@/lib/admin-auth';
+import { autoConvertEssayToInterview } from '@/lib/ai/normalize';
 
 export async function GET(
   request: Request,
@@ -57,7 +58,10 @@ export async function PUT(
 
   try {
     const { id } = await params;
-    const { title, questions } = await request.json();
+    let { title, questions } = await request.json();
+
+    // 全部 essay → 自动转换为 interview
+    questions = autoConvertEssayToInterview(questions);
 
     const quiz = await prisma.quiz.update({
       where: { id },

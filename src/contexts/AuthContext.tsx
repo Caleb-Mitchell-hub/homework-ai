@@ -16,6 +16,10 @@ interface AuthContextType {
   login: (token: string, user: User) => void;
   logout: () => void;
   loading: boolean;
+  /** 积分版本号，每次积分变动后 +1，用于触发 CreditBadge 刷新 */
+  creditsVersion: number;
+  /** 通知积分已变动，CreditBadge 会自动重新加载 */
+  refreshCredits: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -24,7 +28,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creditsVersion, setCreditsVersion] = useState(0);
   const dialog = useDialog();
+
+  const refreshCredits = () => setCreditsVersion((v) => v + 1);
 
   // 初始化时从 localStorage 读取，并校验 token 仍有效（处理被停用的账号）
   useEffect(() => {
@@ -113,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, loading, creditsVersion, refreshCredits }}>
       {children}
     </AuthContext.Provider>
   );

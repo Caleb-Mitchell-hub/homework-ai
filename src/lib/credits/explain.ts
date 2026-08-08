@@ -32,11 +32,38 @@ async function getBalance(userId: string): Promise<number> {
  *  - AI 失败自动回滚
  *  - 同题同用户缓存命中不计费
  */
+const RETRY_MAX = 2;
+
+function buildExplainMessage(opts: {
+  questionContent: string;
+  questionType?: string;
+  userAnswer?: string;
+  correctAnswer?: string;
+  options?: string[];
+}): string {
+  const parts: string[] = [];
+  parts.push(`【题目】${opts.questionContent}`);
+  if (opts.options && opts.options.length > 0) {
+    parts.push(`【选项】${opts.options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n')}`);
+  }
+  if (opts.correctAnswer) {
+    parts.push(`【正确答案】${opts.correctAnswer}`);
+  }
+  if (opts.userAnswer) {
+    parts.push(`【学生作答】${opts.userAnswer}`);
+  }
+  parts.push(`【题目类型】${opts.questionType || '未知'}`);
+  return parts.join('\n\n');
+}
+
 export async function explainQuestion(opts: {
   userId: string;
   questionId: string;
   questionContent: string;
   questionType?: string;
+  userAnswer?: string;
+  correctAnswer?: string;
+  options?: string[];
   signal?: AbortSignal;
 }): Promise<{ content: string; cached: boolean; newBalance: number; costCredit: number }> {
   // 1. 缓存查询
@@ -45,12 +72,17 @@ export async function explainQuestion(opts: {
     orderBy: { createdAt: 'desc' },
   });
   if (cached) {
-    return {
-      content: cached.content,
-      cached: true,
-      newBalance: await getBalance(opts.userId),
-      costCredit: 0,
-    };
+    // 防御:旧缓存可能存了空内容（AI 返回空 → 缓存了空）,删掉重来
+    if (!cached.content?.trim()) {
+      await prisma.aIExplanation.delete({ where: { id: cached.id } });
+    } else {
+      return {
+        content: cached.content,
+        cached: true,
+        newBalance: await getBalance(opts.userId),
+        costCredit: 0,
+      };
+    }
   }
 
   // 2. 计算价格
@@ -82,25 +114,53 @@ export async function explainQuestion(opts: {
     return updated.credits;
   });
 
-  // 4. 调 AI (失败时回滚)
+  // 4. 调 AI (带重试, 失败时回滚)
+  const userMessage = buildExplainMessage({
+    questionContent: opts.questionContent,
+    questionType: opts.questionType,
+    userAnswer: opts.userAnswer,
+    correctAnswer: opts.correctAnswer,
+    options: opts.options,
+  });
+
+  let content: string | undefined;
+  let lastErr: unknown;
   try {
     const provider = await prisma.aIProviderConfig.findFirst({
       where: { isActive: true },
     });
     if (!provider) throw new Error('未配置 AI 厂商');
     const apiKey = decryptApiKey(provider.apiKeyCipher);
-    const content = await callChat({
-      baseURL: provider.baseURL,
-      apiKey,
-      model: provider.model,
-      messages: [
-        { role: 'system', content: QUESTION_EXPLAIN_PROMPT },
-        { role: 'user', content: opts.questionContent },
-      ],
-      signal: opts.signal,
-      maxTokens: 1500,
-      temperature: 0.4,
-    });
+
+    for (let attempt = 0; attempt <= RETRY_MAX; attempt++) {
+      try {
+        content = await callChat({
+          baseURL: provider.baseURL,
+          apiKey,
+          model: provider.model,
+          messages: [
+            { role: 'system', content: QUESTION_EXPLAIN_PROMPT },
+            { role: 'user', content: userMessage },
+          ],
+          signal: opts.signal,
+          maxTokens: 1500,
+          temperature: 0.4,
+        });
+        if (content?.trim()) break; // 成功,跳出重试循环
+        lastErr = new Error('AI 返回了空内容');
+      } catch (err) {
+        lastErr = err;
+        if (attempt < RETRY_MAX) {
+          // 短暂等待后重试
+          await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        }
+      }
+    }
+
+    // AI 返回空内容:不做缓存,直接退款
+    if (!content?.trim()) {
+      throw lastErr ?? new Error('AI 返回了空内容,请检查厂商配置或模型是否支持文本输出');
+    }
 
     // 5. 写缓存
     await prisma.aIExplanation.create({

@@ -13,6 +13,7 @@ import CategorySelect from '@/components/CategorySelect';
 import Toast from '@/components/Toast';
 import QuizSidebar from '@/components/QuizSidebar';
 import HistorySwitcher from '@/components/HistorySwitcher';
+import NotePanel from '@/components/NotePanel';
 
 export default function QuizPage() {
   const params = useParams();
@@ -31,6 +32,8 @@ export default function QuizPage() {
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // 同步提交锁：ref 即时生效，防止异步 state 更新间隙的重复提交
+  const submittingRef = useRef(false);
   const [showNameDialog, setShowNameDialog] = useState(false);
   const [quizName, setQuizName] = useState('');
   const [dialogMode, setDialogMode] = useState<'draft' | 'submit'>('draft');
@@ -45,6 +48,11 @@ export default function QuizPage() {
   // 5 分钟 / 1 分钟提醒已触发过(避免重复弹)
   const warned5minRef = useRef(false);
   const warned1minRef = useRef(false);
+  // 笔记面板
+  const [notePanelOpen, setNotePanelOpen] = useState(false);
+  // 提交后自动逐题 AI 评分
+  const [autoGrading, setAutoGrading] = useState(false);
+  const [autoGradeProgress, setAutoGradeProgress] = useState({ done: 0, total: 0 });
 
   const cat = useCategories();
 
@@ -171,7 +179,7 @@ export default function QuizPage() {
     if (!quiz) return;
     // 有名称 + 分类时跳过对话框(默认值或 draft 已恢复)
     if (quizName.trim() && selectedCategoryId) {
-      confirmAction();
+      confirmAction('draft');
       return;
     }
     setDialogMode('draft');
@@ -182,7 +190,7 @@ export default function QuizPage() {
     if (!quiz) return;
     if (quizName.trim() && selectedCategoryId) {
       // 跳过对话框,直接提交
-      confirmAction();
+      confirmAction('submit');
       return;
     }
     setDialogMode('submit');
@@ -194,7 +202,8 @@ export default function QuizPage() {
    * @param skipDialog 跳过命名对话框（自动提交场景）
    */
   const doSubmit = async (skipDialog: boolean = false) => {
-    if (!quiz || !token) return;
+    if (!quiz || !token || submittingRef.current) return;
+    submittingRef.current = true;
     if (!skipDialog) {
       setShowNameDialog(false);
     }
@@ -258,11 +267,14 @@ export default function QuizPage() {
       console.error('提交失败:', error);
     } finally {
       setIsSubmitting(false);
+      submittingRef.current = false;
     }
   };
 
-  const confirmAction = async () => {
-    if (!quiz || !token) return;
+  const confirmAction = async (mode?: 'draft' | 'submit') => {
+    if (!quiz || !token || submittingRef.current) return;
+    const actionMode = mode || dialogMode;
+    submittingRef.current = true;
 
     const answerList = quiz.questions.map((q: Question) => ({
       questionId: q.id,
@@ -275,7 +287,7 @@ export default function QuizPage() {
       answerList.map((a) => ({ questionId: a.questionId, answer: a.userAnswer }))
     );
 
-    if (dialogMode === 'draft') {
+    if (actionMode === 'draft') {
       try {
         const res = await fetch('/api/results', {
           method: 'POST',
@@ -311,8 +323,12 @@ export default function QuizPage() {
         }
       } catch (error) {
         console.error('暂存失败:', error);
+      } finally {
+        submittingRef.current = false;
       }
     } else {
+      // 释放锁让 doSubmit 重新获取（confirmAction 与 doSubmit 各自持锁，避免死锁）
+      submittingRef.current = false;
       doSubmit(true);
     }
   };
@@ -327,6 +343,57 @@ export default function QuizPage() {
       localStorage.removeItem(`quiz_progress_${quiz.id}`);
     }
   };
+
+  // 提交后自动逐题 AI 评分（不阻塞页面，逐题进行）
+  useEffect(() => {
+    if (!submitted || !result?.id || !token || autoGrading) return;
+    const items = result.results || [];
+    const needGrade = items.filter((item: any) => {
+      const q = quiz?.questions.find((qq: Question) => qq.id === item.questionId);
+      return q && (q.type === 'interview' || q.type === 'essay') && typeof item.interviewScore !== 'number';
+    });
+    if (needGrade.length === 0) return;
+
+    setAutoGrading(true);
+    setAutoGradeProgress({ done: 0, total: needGrade.length });
+
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < needGrade.length; i++) {
+        if (cancelled) break;
+        const item = needGrade[i];
+        try {
+          const res = await fetch('/api/ai/grade-interview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ resultId: result.id, questionId: item.questionId }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setResult((prev: any) => {
+              const updated = { ...prev };
+              const results = [...(updated.results || [])];
+              const idx = results.findIndex((r: any) => r.questionId === item.questionId);
+              if (idx >= 0) {
+                results[idx] = {
+                  ...results[idx],
+                  interviewScore: data.interviewScore,
+                  interviewFeedback: data.interviewFeedback,
+                };
+              }
+              updated.results = results;
+              return updated;
+            });
+          }
+        } catch { /* 继续下一题 */ }
+        if (!cancelled) {
+          setAutoGradeProgress({ done: i + 1, total: needGrade.length });
+        }
+      }
+      if (!cancelled) setAutoGrading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [submitted, result?.id, token]);
 
   const answeredCount = Object.keys(answers).filter(k => answers[k]).length;
 
@@ -402,6 +469,14 @@ export default function QuizPage() {
             上传新文件
           </button>
         </div>
+
+        {/* 笔记面板 */}
+        <NotePanel
+          open={notePanelOpen}
+          onClose={() => setNotePanelOpen(false)}
+          quizId={quiz.id}
+          resultId={result?.id}
+        />
       </div>
     );
   }
@@ -556,7 +631,17 @@ export default function QuizPage() {
           disabled={isSubmitting}
           className="px-8 py-3 bg-gradient-to-r from-sky-400 to-emerald-400 text-white rounded-xl hover:from-sky-500 hover:to-emerald-500 shadow-md shadow-sky-200 disabled:opacity-50"
         >
-          提交答案
+          {isSubmitting ? (
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              AI 评分中...
+            </span>
+          ) : (
+            '提交答案'
+          )}
         </button>
       </div>
 
@@ -594,7 +679,7 @@ export default function QuizPage() {
                 取消
               </button>
               <button
-                onClick={confirmAction}
+                onClick={() => confirmAction()}
                 className={`flex-1 py-2 rounded-lg text-white ${
                   dialogMode === 'draft' ? 'bg-amber-400 hover:bg-amber-500' : 'bg-gradient-to-r from-sky-400 to-emerald-400 hover:from-sky-500 hover:to-emerald-500'
                 }`}
@@ -607,6 +692,13 @@ export default function QuizPage() {
       )}
 
       <Toast message={toastMessage} visible={toastVisible} onHide={() => setToastVisible(false)} />
+
+      {/* 笔记面板 */}
+      <NotePanel
+        open={notePanelOpen}
+        onClose={() => setNotePanelOpen(false)}
+        quizId={quiz.id}
+      />
     </div>
   );
 }

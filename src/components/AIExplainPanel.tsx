@@ -8,13 +8,19 @@ interface Props {
   questionId: string;
   questionContent: string;
   questionType: string;
+  /** 用户的作答 */
+  userAnswer?: string;
+  /** 正确答案 */
+  correctAnswer?: string;
+  /** 选项列表 */
+  options?: string[];
   onNeedCredits: (required: number, balance: number) => void;
   /** AI 返回内容后回调，用于父组件捕获解析结果（如传给追问组件作为上下文） */
   onDone?: (content: string) => void;
 }
 
-export default function AIExplainPanel({ questionId, questionContent, questionType, onNeedCredits, onDone }: Props) {
-  const { token } = useAuth();
+export default function AIExplainPanel({ questionId, questionContent, questionType, userAnswer, correctAnswer, options, onNeedCredits, onDone }: Props) {
+  const { token, refreshCredits } = useAuth();
   const [state, setState] = useState<
     | { status: 'idle' }
     | { status: 'loading' }
@@ -29,7 +35,7 @@ export default function AIExplainPanel({ questionId, questionContent, questionTy
       const res = await fetch('/api/ai/explain', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ questionId, content: questionContent, type: questionType }),
+        body: JSON.stringify({ questionId, content: questionContent, type: questionType, userAnswer, correctAnswer, options }),
       });
       const data = await res.json();
       if (res.status === 400 && data.required != null) {
@@ -38,6 +44,8 @@ export default function AIExplainPanel({ questionId, questionContent, questionTy
         return;
       }
       if (!res.ok) throw new Error(data.error ?? '解析失败');
+      // 积分已扣减（非缓存命中时），通知 CreditBadge 刷新
+      if (!data.cached) refreshCredits();
       if (data.content && onDone) {
         onDone(data.content);
       }

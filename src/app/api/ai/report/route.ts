@@ -26,23 +26,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '结果不存在' }, { status: 404 });
   }
 
-  // 计算 byType + wrongQuestions
+  // 计算 byType + byDifficulty + wrongQuestions
   const quiz = await prisma.quiz.findUnique({ where: { id: result.quizId } });
   const questions = JSON.parse(quiz?.questions ?? '[]');
   const items = JSON.parse(result.results || '[]');
   const byType: Record<string, { total: number; correct: number; correctRate: number }> = {};
+  const byDifficulty: Record<string, { total: number; correct: number; correctRate: number }> = {};
   const wrongQuestions: any[] = [];
+  let noDiffCount = 0;
   items.forEach((r: any, i: number) => {
     const q = questions.find((qq: any) => qq.id === r.questionId);
     if (!q) return;
+    // byType
     if (!byType[q.type]) byType[q.type] = { total: 0, correct: 0, correctRate: 0 };
     byType[q.type].total += 1;
     if (r.correct) byType[q.type].correct += 1;
+    // byDifficulty
+    const diff = q.difficulty as string | undefined;
+    if (diff && (diff === '简单' || diff === '中等' || diff === '困难')) {
+      if (!byDifficulty[diff]) byDifficulty[diff] = { total: 0, correct: 0, correctRate: 0 };
+      byDifficulty[diff].total += 1;
+      if (r.correct) byDifficulty[diff].correct += 1;
+    } else {
+      noDiffCount++;
+    }
+    // wrongQuestions
     if (!r.correct && r.userAnswer) {
       wrongQuestions.push({
         index: i + 1,
         title: q.title,
         type: q.type,
+        difficulty: diff,
         userAnswer: r.userAnswer,
         correctAnswer: r.correctAnswer ?? '',
       });
@@ -52,6 +66,19 @@ export async function POST(request: NextRequest) {
     const t = byType[k];
     t.correctRate = t.total > 0 ? t.correct / t.total : 0;
   }
+  for (const k of Object.keys(byDifficulty)) {
+    const t = byDifficulty[k];
+    t.correctRate = t.total > 0 ? t.correct / t.total : 0;
+  }
+
+  // 构建难度分布概览
+  const diffProfileParts: string[] = [];
+  for (const d of ['简单', '中等', '困难'] as const) {
+    const v = byDifficulty[d];
+    if (v) diffProfileParts.push(`${d}题正确率 ${Math.round(v.correctRate * 100)}% (${v.correct}/${v.total})`);
+  }
+  if (noDiffCount > 0) diffProfileParts.push(`${noDiffCount} 题无难度标记`);
+  const difficultyProfile = diffProfileParts.join('; ') || undefined;
 
   try {
     const gen = await generateReport({
@@ -61,7 +88,9 @@ export async function POST(request: NextRequest) {
       score: result.score,
       totalScore: result.totalScore,
       byType,
+      byDifficulty,
       wrongQuestions,
+      difficultyProfile,
     });
     return NextResponse.json({
       content: gen.content,

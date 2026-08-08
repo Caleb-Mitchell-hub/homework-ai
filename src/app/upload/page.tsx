@@ -8,7 +8,7 @@ import UploadForm from '@/components/UploadForm';
 /**
  * 上传题库 —— 普通模式入口
  * 路径:/upload
- * - 复用 UploadForm(无 forceManual,默认是上传/粘贴 + 选择对话框)
+ * - 复用 UploadForm（上传文件 + 粘贴文本）
  * - 创建成功后 UploadForm 默认 router.push 到 /quiz/<id>
  * - 未登录跳 /login
  */

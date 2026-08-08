@@ -12,7 +12,7 @@ interface CreditsState {
 
 export default function CreditBadge() {
   const router = useRouter();
-  const { token, user } = useAuth();
+  const { token, user, creditsVersion } = useAuth();
   const [state, setState] = useState<CreditsState | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -22,7 +22,7 @@ export default function CreditBadge() {
     if (res.ok) setState(await res.json());
   };
 
-  useEffect(() => { load(); }, [token]);
+  useEffect(() => { load(); }, [token, creditsVersion]);
 
   if (!user || user.isGuest) return null;
 

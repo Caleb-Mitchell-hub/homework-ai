@@ -17,6 +17,7 @@ export default function ReportPage() {
     quizTitle: string;
     stats: ReportStats;
     initialReport?: any;
+    isInterview: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -24,7 +25,7 @@ export default function ReportPage() {
     let cancelled = false;
     (async () => {
       try {
-        // 1) 查所有结果,找到目标
+        // 1) 查所有结果，找到目标
         const resultsRes = await fetch('/api/results', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -46,37 +47,49 @@ export default function ReportPage() {
         });
         if (!quizRes.ok) throw new Error('无法加载题目');
         const quizData = await quizRes.json();
-        // 4) 计算本地统计
+        const questions = quizData.quiz?.questions ?? [];
+
+        // 4) 判断是否为面试题型（全部题目都是 interview 或 essay 类型）
+        const isInterview = questions.length > 0 && questions.every((q: any) => q.type === 'interview' || q.type === 'essay');
+
+        // 5) 计算本地统计
         const stats = calcReportStats({
           totalScore: found.score,
           results: found.results ?? [],
-          questions: quizData.quiz?.questions ?? [],
+          questions,
         });
-        // 5) 尝试查已有缓存报告
+
+        // 6) 尝试加载缓存报告
         let initialReport: any = undefined;
-        try {
-          const reportRes = await fetch('/api/ai/report', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ resultId }),
-          });
-          if (reportRes.ok) {
-            const reportData = await reportRes.json();
-            if (reportData.cached && reportData.content) {
-              initialReport = reportData.content;
+        if (!isInterview) {
+          // 普通题型：尝试加载缓存的 AI 报告
+          try {
+            const reportRes = await fetch('/api/ai/report', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ resultId }),
+            });
+            if (reportRes.ok) {
+              const reportData = await reportRes.json();
+              if (reportData.cached && reportData.content) {
+                initialReport = reportData.content;
+              }
             }
+          } catch {
+            // 静默忽略
           }
-        } catch {
-          // 静默忽略
         }
+        // 面试题报告不做缓存预加载
+
         if (!cancelled) {
           setData({
             quizTitle: quizData.quiz?.title ?? '',
             stats,
             initialReport,
+            isInterview,
           });
         }
       } catch (e: any) {
@@ -127,6 +140,7 @@ export default function ReportPage() {
           stats={data.stats}
           quizTitle={data.quizTitle}
           initialReport={data.initialReport}
+          isInterview={data.isInterview}
         />
       </div>
     </div>

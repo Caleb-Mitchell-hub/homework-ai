@@ -34,6 +34,9 @@ export default function AiProviderModal({ provider, onClose, onSaved }: Props) {
   const [isActive, setIsActive] = useState(provider?.isActive ?? false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [modelList, setModelList] = useState<{ id: string; tag?: string }[]>([]);
+  const [fetchModelsErr, setFetchModelsErr] = useState('');
 
   useEffect(() => {
     if (isEdit) return;
@@ -45,6 +48,38 @@ export default function AiProviderModal({ provider, onClose, onSaved }: Props) {
       setSupportsVision(p.supportsVision);
     }
   }, [preset, isEdit]);
+
+  const handleFetchModels = async () => {
+    setFetchModelsErr('');
+    setFetchingModels(true);
+    setModelList([]);
+    try {
+      const body: Record<string, unknown> = { baseURL, apiKey };
+      // 编辑模式: 传 providerId 让后端从 DB 解密密钥, 避免编辑时必须重输 API Key
+      if (isEdit && provider) {
+        body.providerId = provider.id;
+      }
+      const res = await fetch('/api/admin/ai/fetch-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFetchModelsErr(data.error ?? '拉取失败');
+        return;
+      }
+      setModelList(data.models ?? []);
+      // 如果当前 model 为空且拉到了模型,自动选第一个
+      if (!model.trim() && data.models?.length > 0) {
+        setModel(data.models[0].id);
+      }
+    } catch (e: any) {
+      setFetchModelsErr(e?.message ?? '网络错误');
+    } finally {
+      setFetchingModels(false);
+    }
+  };
 
   const onSubmit = async () => {
     setErr('');
@@ -113,12 +148,40 @@ export default function AiProviderModal({ provider, onClose, onSaved }: Props) {
             />
           </div>
           <div>
-            <label className="block text-[12px] text-slate-600 mb-1">模型</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[12px] text-slate-600">模型</label>
+              <button
+                type="button"
+                onClick={handleFetchModels}
+                disabled={!baseURL.trim() || (!isEdit && !apiKey.trim()) || fetchingModels}
+                title={!baseURL.trim() ? '请先填写 Base URL' : !isEdit && !apiKey.trim() ? '请先填写 API Key' : '从厂商拉取可用模型列表'}
+                className="text-[11px] text-sky-600 hover:text-sky-700 disabled:text-slate-300 disabled:cursor-not-allowed flex items-center gap-1"
+              >
+                {fetchingModels ? (
+                  <><span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" /> 拉取中…</>
+                ) : (
+                  <>📡 拉取模型</>
+                )}
+              </button>
+            </div>
+            {fetchModelsErr && (
+              <div className="text-[11px] text-rose-500 mb-1">{fetchModelsErr}</div>
+            )}
+            {modelList.length > 0 && (
+              <div className="text-[10px] text-slate-400 mb-1">已拉取 {modelList.length} 个模型,可从下拉选择或手动输入</div>
+            )}
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
+              list="model-datalist"
+              placeholder="模型 ID, 如 deepseek-chat"
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:border-sky-400"
             />
+            <datalist id="model-datalist">
+              {modelList.map((m) => (
+                <option key={m.id} value={m.id} label={m.tag ? `${m.tag} | ${m.id}` : m.id} />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className="block text-[12px] text-slate-600 mb-1">
@@ -147,8 +210,15 @@ export default function AiProviderModal({ provider, onClose, onSaved }: Props) {
               <input
                 value={visionModel ?? ''}
                 onChange={(e) => setVisionModel(e.target.value)}
+                list="vision-model-datalist"
+                placeholder="视觉模型 ID, 如 gpt-4o"
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:border-sky-400"
               />
+              <datalist id="vision-model-datalist">
+                {modelList.filter((m) => m.tag?.includes('视觉')).map((m) => (
+                  <option key={m.id} value={m.id} label={m.id} />
+                ))}
+              </datalist>
             </div>
           )}
           <div className="flex items-center gap-2">

@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => null);
-  const { questionId, content, type } = body || {};
+  const { questionId, content, type, userAnswer, correctAnswer, options } = body || {};
   if (!questionId || !content) {
     return NextResponse.json({ error: 'questionId 和 content 必填' }, { status: 400 });
   }
@@ -22,6 +22,9 @@ export async function POST(request: NextRequest) {
       questionId,
       questionContent: content,
       questionType: type,
+      userAnswer,
+      correctAnswer,
+      options,
       signal: request.signal,
     });
     return NextResponse.json(result);

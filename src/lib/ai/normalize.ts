@@ -25,12 +25,15 @@ export function normalizeAIOutputToQuestions(
   const out: Question[] = [];
   for (const r of rawArr ?? []) {
     const type = r.type;
+    const code = String(r.code ?? '').trim();
+    const language = String(r.language ?? (code ? 'plaintext' : ''));
     const base = {
       id: idGen(),
       title: String(r.title ?? '').trim(),
       answer: String(r.answer ?? ''),
       analysis: r.analysis ? String(r.analysis) : undefined,
       score: typeof r.score === 'number' ? r.score : undefined,
+      ...(code ? { code, language } : {}),
     };
     switch (type) {
       case 'single':
@@ -83,10 +86,37 @@ export function normalizeAIOutputToQuestions(
           outputExample: String(r.outputExample ?? ''),
         });
         break;
+      case 'interview':
+        out.push({
+          ...base,
+          type: 'interview',
+          referenceAnswer: String(r.referenceAnswer ?? r.answer ?? ''),
+          subQuestions: Array.isArray(r.subQuestions)
+            ? (r.subQuestions as unknown[]).map((s) => String(s))
+            : undefined,
+        });
+        break;
       default:
         // 未知类型,丢弃
         break;
     }
   }
   return out;
+}
+
+/**
+ * 如果所有题目都是 essay 类型，自动转换为 interview 类型。
+ * AI 解析和手动创建时都适用。
+ */
+export function autoConvertEssayToInterview(questions: Question[]): Question[] {
+  if (questions.length === 0) return questions;
+  if (questions.every((q) => q.type === 'essay')) {
+    return questions.map((q) => ({
+      ...q,
+      type: 'interview' as const,
+      referenceAnswer: (q as any).referenceAnswer ?? '',
+      subQuestions: undefined,
+    }));
+  }
+  return questions;
 }

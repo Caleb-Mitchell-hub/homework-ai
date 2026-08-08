@@ -13,6 +13,10 @@ export interface BaseQuestion {
   score?: number;
   /** 难度,可选;没有默认'中等' */
   difficulty?: Difficulty;
+  /** 题目关联的代码块 (AI 解析时提取, 可用于所有题型) */
+  code?: string;
+  /** 代码块语言 */
+  language?: string;
 }
 
 export interface SingleQuestion extends BaseQuestion {
@@ -86,6 +90,38 @@ export interface Answer {
   answer: string;
 }
 
+/** AI 对面试题单题的回答反馈 */
+export interface InterviewFeedback {
+  /** 回答中的亮点 */
+  strengths: string[];
+  /** 不足之处 */
+  weaknesses: string[];
+  /** 改进建议 */
+  suggestion: string;
+}
+
+export interface ResultItem {
+  questionId: string;
+  correct: boolean;
+  correctAnswer: string;
+  userAnswer: string;
+  autoGraded: boolean;
+  /** AI 自动批评语 */
+  aiComment?: string;
+  /** 面试题 AI 打分 0-100 */
+  interviewScore?: number;
+  /** 面试题 AI 详细反馈 */
+  interviewFeedback?: InterviewFeedback;
+  /** 人工分数 0~1 */
+  manualScore?: number;
+  /** 人工评语 */
+  manualComment?: string;
+  /** 批阅人 admin userId */
+  manualGradedBy?: string;
+  /** 批阅时间 ISO */
+  manualGradedAt?: string;
+}
+
 export interface QuizResult {
   /** 服务端 QuizResult.id,前端有时候拿不到;详情页/报告页用 */
   id?: string;
@@ -95,22 +131,27 @@ export interface QuizResult {
   answers: Answer[];
   score: number;
   totalScore: number;
-  results: {
-    questionId: string;
-    correct: boolean;
-    correctAnswer: string;
-    userAnswer: string;
-    autoGraded: boolean;
-    /** AI 自动批评语 */
-    aiComment?: string;
-    /** 人工分数 0~1 */
-    manualScore?: number;
-    /** 人工评语 */
-    manualComment?: string;
-    /** 批阅人 admin userId */
-    manualGradedBy?: string;
-    /** 批阅时间 ISO */
-    manualGradedAt?: string;
-  }[];
+  results: ResultItem[];
   submittedAt: number;
+}
+
+/** 笔记类型 */
+export type NoteType = 'question' | 'answer' | 'ai_output';
+
+/** 笔记来源 */
+export type NoteSource = 'manual' | 'ai_explain' | 'reference_answer' | 'ai_report';
+
+/** 笔记 */
+export interface Note {
+  id: string;
+  userId: string;
+  type: NoteType;
+  questionId?: string | null;
+  quizId?: string | null;
+  resultId?: string | null;
+  title: string;
+  content: string;
+  source: NoteSource;
+  createdAt: number;
+  updatedAt: number;
 }

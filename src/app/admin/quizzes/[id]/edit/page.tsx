@@ -8,7 +8,7 @@ import { useDialog } from '@/components/DialogProvider';
 
 interface Question {
   id?: string;
-  type: 'single' | 'multiple' | 'judge' | 'fill' | 'essay' | 'code';
+  type: 'single' | 'multiple' | 'judge' | 'fill' | 'essay' | 'code' | 'interview';
   content: string;
   options?: string[];
   answer: string;
@@ -214,6 +214,7 @@ export default function EditQuizPage() {
                     {q.type === 'fill' && '填空'}
                     {q.type === 'essay' && '简答'}
                     {q.type === 'code' && '代码'}
+                    {q.type === 'interview' && '面试'}
                   </span>
                   <span className="text-slate-500 text-sm">{q.score} 分</span>
                 </div>

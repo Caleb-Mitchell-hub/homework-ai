@@ -62,6 +62,9 @@ function parseAnswerSection(content: string): ParsedAnswer[] {
     } else if (trimmed.includes('简答题')) {
       currentSection = 'essay';
       continue;
+    } else if (trimmed.includes('面试题')) {
+      currentSection = 'interview';
+      continue;
     }
 
     if (currentSection && /^[\d]+[.、]/.test(trimmed)) {
@@ -209,6 +212,61 @@ function parseEssayQuestions(content: string, answerMap: Map<string, string>): Q
   return questions;
 }
 
+/**
+ * 面试题解析
+ *
+ * 支持 markdown 格式:
+ *   12. 主问题描述
+ *       - 子问题 1
+ *       - 子问题 2
+ *
+ *   面试题答案区 (在答案区段里):
+ *   12. 参考答案文字...
+ */
+function parseInterviewQuestions(content: string, answerMap: Map<string, string>): Question[] {
+  const questions: Question[] = [];
+  const lines = content.split('\n');
+
+  let currentNum: string | null = null;
+  let currentTitle = '';
+  let currentSubs: string[] = [];
+
+  const flush = () => {
+    if (!currentNum) return;
+    const answer = answerMap.get(`interview_${currentNum}`) || '';
+    questions.push({
+      id: generateId(),
+      type: 'interview',
+      title: stripCodeQuotes(currentNum + '. ' + currentTitle.trim()),
+      answer: stripCodeQuotes(answer),
+      referenceAnswer: stripCodeQuotes(answer),
+      subQuestions: currentSubs.length > 0 ? currentSubs.map(stripCodeQuotes) : undefined,
+    });
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const numMatch = trimmed.match(/^(?:#{1,6}\s*)?(\d+)\.\s*(.+)/);
+    if (numMatch) {
+      flush();
+      currentNum = numMatch[1];
+      currentTitle = numMatch[2];
+      currentSubs = [];
+      continue;
+    }
+
+    // 子问题:以 - 或 • 开头 (面试题的子问题标记)
+    const subMatch = trimmed.match(/^[-•]\s+(.+)/);
+    if (subMatch && currentNum) {
+      currentSubs.push(subMatch[1]);
+    }
+  }
+  flush();
+  return questions;
+}
+
 function parseCodeQuestions(content: string): Question[] {
   const questions: Question[] = [];
   const lines = content.split('\n');
@@ -329,6 +387,8 @@ export function parseMarkdown(content: string): Question[] {
       questions.push(...parseFillQuestions(s.body, answerMap));
     } else if (/简答题/.test(s.title)) {
       questions.push(...parseEssayQuestions(s.body, answerMap));
+    } else if (/面试题/.test(s.title)) {
+      questions.push(...parseInterviewQuestions(s.body, answerMap));
     }
   }
 

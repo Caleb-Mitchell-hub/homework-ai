@@ -18,13 +18,15 @@ const REASON_LABELS: Record<string, string> = {
   topup: '充值',
   admin_adjust: '管理员调整',
   ai_explain: 'AI 解析',
+  ai_report: 'AI 学习报告',
+  ai_interview_report: 'AI 面试深度总结',
   refund: '退还',
   signup: '注册奖励',
 };
 
 export default function CreditsPage() {
   const router = useRouter();
-  const { user, token, loading } = useAuth();
+  const { user, token, loading, refreshCredits } = useAuth();
   const [balance, setBalance] = useState(0);
   const [history, setHistory] = useState<Ledger[]>([]);
   const [busy, setBusy] = useState(false);
@@ -63,6 +65,7 @@ export default function CreditsPage() {
       const data = await res.json();
       if (res.ok) {
         alert(`${data.message}\n新余额: ${data.balance}`);
+        refreshCredits();
         load();
       } else alert(data.error || '失败');
     } finally {
@@ -96,7 +99,7 @@ export default function CreditsPage() {
           </button>
         </div>
         <p className="text-[12px] text-slate-500 mb-6">
-          充值服务即将上线。当前可联系管理员手工充值,或每日签到领取 5 积分。
+          充值服务即将上线。当前可联系管理员手工充值,或每日签到领取 30 积分。
         </p>
 
         <h2 className="text-[14px] font-semibold text-slate-700 mb-2">积分流水</h2>
