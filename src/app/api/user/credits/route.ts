@@ -24,7 +24,9 @@ export async function GET(request: NextRequest) {
   // 使用 en-CA locale 直接输出 YYYY-MM-DD 格式的北京时间日期，
   // 避免 new Date(string) 解析 locale 字符串在不同 Node 版本/时区下的不确定性
   const beijingDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-  const today = new Date(`${beijingDateStr}T00:00:00+08:00`);
+  // ISO date-only string (YYYY-MM-DD) → UTC 午夜 → MySQL DATE 列直接取 UTC 日期
+  // 北京时间 00:00~23:59 → UTC 日期总是同一天（因为 UTC+8 = 08:00 到次日 07:59 都在同一 UTC 日内）
+  const today = new Date(beijingDateStr);
 
   const [user, todayCheckIn] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { credits: true } }),
