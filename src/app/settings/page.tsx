@@ -13,9 +13,11 @@ export default function SettingsPage() {
 
   // 基本信息
   const [username, setUsername] = useState('');
-  const [occupation, setOccupation] = useState('');
+  const [professionId, setProfessionId] = useState('');
+  const [professions, setProfessions] = useState<{ id: string; name: string }[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
+  const [professionSaving, setProfessionSaving] = useState(false);
 
   // 修改密码
   const [oldPassword, setOldPassword] = useState('');
@@ -34,9 +36,17 @@ export default function SettingsPage() {
   // 退出登录
   const [showLogout, setShowLogout] = useState(false);
 
-  // 加载当前用户信息
+  // 加载当前用户信息和职业列表
   useEffect(() => {
     if (!token) return;
+
+    // 加载职业列表
+    fetch('/api/professions')
+      .then(res => res.json())
+      .then(data => { if (data.professions) setProfessions(data.professions); })
+      .catch(() => {});
+
+    // 加载当前用户信息
     fetch('/api/auth/me', {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -44,7 +54,7 @@ export default function SettingsPage() {
       .then(data => {
         if (data.user) {
           setUsername(data.user.username || '');
-          setOccupation(data.user.occupation || '');
+          setProfessionId(data.user.professionId || '');
           if (data.user.securityQuestion) {
             setCurrentSecQuestion(data.user.securityQuestion);
           }
@@ -53,7 +63,7 @@ export default function SettingsPage() {
       .catch(() => {});
   }, [token]);
 
-  // 保存基本信息
+  // 保存基本信息（仅用户名）
   async function handleSaveProfile() {
     if (!username.trim() || username.trim().length < 3) {
       setProfileError('用户名长度需在3-20个字符之间');
@@ -68,10 +78,7 @@ export default function SettingsPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          username: username.trim(),
-          occupation: occupation.trim() || null,
-        }),
+        body: JSON.stringify({ username: username.trim() }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -87,6 +94,27 @@ export default function SettingsPage() {
       setProfileError('网络错误，请稍后重试');
     } finally {
       setProfileLoading(false);
+    }
+  }
+
+  // 切换职业（即时保存）
+  async function handleProfessionChange(newProfessionId: string) {
+    setProfessionId(newProfessionId);
+    if (!token) return;
+    setProfessionSaving(true);
+    try {
+      await fetch('/api/user/profession', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ professionId: newProfessionId || null }),
+      });
+    } catch {
+      // 静默失败，不影响使用
+    } finally {
+      setProfessionSaving(false);
     }
   }
 
@@ -234,14 +262,27 @@ export default function SettingsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-600 mb-1.5">职业</label>
-              <input
-                type="text"
-                value={occupation}
-                onChange={(e) => setOccupation(e.target.value)}
-                placeholder="例如：软件工程师"
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-400"
-                maxLength={50}
-              />
+              <div className="relative">
+                <select
+                  value={professionId}
+                  onChange={(e) => handleProfessionChange(e.target.value)}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-400 bg-white appearance-none cursor-pointer"
+                  disabled={professionSaving}
+                >
+                  <option value="">暂不选择</option>
+                  {professions.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                {professionSaving && (
+                  <div className="absolute right-8 top-1/2 -translate-y-1/2">
+                    <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
             </div>
             {profileError && (
               <p className="text-xs text-red-500">{profileError}</p>
