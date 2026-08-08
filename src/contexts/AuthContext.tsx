@@ -20,6 +20,8 @@ interface AuthContextType {
   creditsVersion: number;
   /** 通知积分已变动，CreditBadge 会自动重新加载 */
   refreshCredits: () => void;
+  /** 部分更新当前用户信息（如用户名），同步写入 localStorage */
+  updateUser: (partial: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -32,6 +34,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const dialog = useDialog();
 
   const refreshCredits = () => setCreditsVersion((v) => v + 1);
+
+  const updateUser = (partial: Partial<User>) => {
+    setUser(prev => {
+      if (!prev) return prev;
+      const merged = { ...prev, ...partial };
+      localStorage.setItem('user', JSON.stringify(merged));
+      localStorage.setItem('auth_user', JSON.stringify(merged));
+      return merged;
+    });
+  };
 
   // 初始化时从 localStorage 读取，并校验 token 仍有效（处理被停用的账号）
   useEffect(() => {
@@ -120,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading, creditsVersion, refreshCredits }}>
+    <AuthContext.Provider value={{ user, token, login, logout, loading, creditsVersion, refreshCredits, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
