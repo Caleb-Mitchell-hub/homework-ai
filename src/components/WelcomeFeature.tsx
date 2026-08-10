@@ -46,7 +46,7 @@ export default function WelcomeFeature({
       {/* 标题 */}
       <h2
         className="text-[32px] leading-[1.15] text-slate-800 mb-4 tracking-[-0.01em]"
-        style={{ fontFamily: "var(--font-serif), 'Songti SC', serif", fontStyle: 'italic', fontWeight: 500 }}
+        style={{ fontFamily: "var(--font-fraunces), 'Songti SC', serif", fontStyle: 'italic', fontWeight: 500 }}
       >
         {title}
       </h2>
