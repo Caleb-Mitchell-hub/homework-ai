@@ -107,6 +107,37 @@ export async function POST(request: Request) {
       return { ...r, results: arr };
     };
 
+    // 计算客观题/主观题数量（需要从题库中读取题型）
+    const SUBJECTIVE_TYPES = new Set(['interview', 'essay']);
+    let objectiveCount = 0;
+    let subjectiveCount = 0;
+    try {
+      const quiz = await prisma.quiz.findUnique({
+        where: { id: quizId },
+        select: { questions: true },
+      });
+      if (quiz) {
+        let questions: any[] = [];
+        try {
+          questions = JSON.parse(quiz.questions || '[]');
+        } catch { /* keep [] */ }
+        const typeMap = new Map<string, string>();
+        for (const q of questions) {
+          if (q.id && q.type) typeMap.set(q.id, q.type);
+        }
+        for (const item of answerResults) {
+          const qType = typeMap.get(item.questionId);
+          if (qType && SUBJECTIVE_TYPES.has(qType)) {
+            subjectiveCount++;
+          } else {
+            objectiveCount++;
+          }
+        }
+      }
+    } catch {
+      // 计算失败不阻塞提交
+    }
+
     // 拆分 dedup:
     //  - draft  → 同一份草稿 upsert(同 user+quiz 仅 1 份)
     //  - submitted → 直接 insert 新行,允许 N 份历史;同时给主观题调 AI 拿 aiComment
@@ -132,6 +163,8 @@ export async function POST(request: Request) {
           score,
           totalScore,
           results: JSON.stringify(answerResults),
+          objectiveCount,
+          subjectiveCount,
         },
         existingDraft?.id ?? null,
       );
@@ -143,13 +176,14 @@ export async function POST(request: Request) {
             })
           : await prisma.quizResult.create({ data: upsert.data });
     } else {
-      // 防抖：30s 内同一 (userId, quizId) 只允许一条 submitted 记录
+      // 防抖：3s 内同一 (userId, quizId) 只允许一条 submitted 记录
+      // 仅用于防止快速双击，不做内容去重（用户可能在 30 秒内重新答题并提交新内容）
       const recentDedup = await prisma.quizResult.findFirst({
         where: {
           userId: payload.userId,
           quizId,
           status: 'submitted',
-          submittedAt: { gte: new Date(Date.now() - 30_000) },
+          submittedAt: { gte: new Date(Date.now() - 3_000) },
         },
         orderBy: { submittedAt: 'desc' },
       });
@@ -168,6 +202,8 @@ export async function POST(request: Request) {
           results: JSON.stringify(answerResults),
           status: 'submitted',
           submittedAt: new Date(),
+          objectiveCount,
+          subjectiveCount,
         },
       });
     }

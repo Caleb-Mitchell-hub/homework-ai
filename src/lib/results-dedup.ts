@@ -55,6 +55,10 @@ export interface DraftUpsertInput {
   totalScore: number;
   /** JSON 序列化的 results 数组 */
   results: string;
+  /** 客观题数量 */
+  objectiveCount: number;
+  /** 主观题数量 */
+  subjectiveCount: number;
 }
 
 /**
@@ -76,6 +80,8 @@ export function buildDraftUpsertData(
         score: input.score,
         totalScore: input.totalScore,
         results: input.results,
+        objectiveCount: input.objectiveCount,
+        subjectiveCount: input.subjectiveCount,
       },
     };
   }
@@ -89,6 +95,8 @@ export function buildDraftUpsertData(
       totalScore: input.totalScore,
       results: input.results,
       status: 'draft',
+      objectiveCount: input.objectiveCount,
+      subjectiveCount: input.subjectiveCount,
     },
   };
 }

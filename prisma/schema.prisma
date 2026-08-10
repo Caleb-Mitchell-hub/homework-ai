@@ -27,6 +27,7 @@ model User {
   admin              Admin?
   quizzes            Quiz[]
   results            QuizResult[]
+  resultCategories   ResultCategory[]
   professionId       String?
   profession         Profession?     @relation(fields: [professionId], references: [id])
   checkIns           DailyCheckIn[]
@@ -83,9 +84,12 @@ model QuizResult {
   quiz        Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status      String    @default("submitted")
-  submittedAt DateTime  @default(now())
-  report      AIReport?
+  status           String    @default("submitted")
+  categoryId       String?
+  objectiveCount   Int       @default(0)
+  subjectiveCount  Int       @default(0)
+  submittedAt      DateTime  @default(now())
+  report           AIReport?
 }
 
 model Profession {
@@ -251,4 +255,17 @@ model Note {
   @@index([userId, quizId])
   @@index([userId, questionId])
   @@index([userId, resultId])
+}
+
+/// 答题记录自定义分类（替代 localStorage，跨设备同步）
+model ResultCategory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String   @db.VarChar(40)
+  parentId  String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
