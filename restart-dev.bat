@@ -1,4 +1,9 @@
 @echo off
+if not defined _BG_ (
+    set _BG_=1
+    start /min "" "%~f0" %*
+    exit
+)
 chcp 936 >nul
 title Restart Homework AI - Dev
 cd /d "%~dp0"

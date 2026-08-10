@@ -108,7 +108,7 @@ export default function AdminLoginPage() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="admin"
+                  placeholder="请输入管理员用户名"
                   className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all"
                 />
               </div>
@@ -183,10 +183,6 @@ export default function AdminLoginPage() {
             >
               {loading ? '处理中...' : '登录'}
             </button>
-
-            <p className="text-center text-slate-400 text-sm mt-4">
-              默认账号: admin / admin123
-            </p>
           </div>
         </div>
       </div>

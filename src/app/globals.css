@@ -4,6 +4,10 @@
   --background: #ffffff;
   --foreground: #171717;
   --base-font-size: 16px;
+
+  --font-geist-sans: 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', system-ui, sans-serif;
+  --font-geist-mono: 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
+  --font-fraunces: 'Songti SC', 'STSong', 'Noto Serif SC', Georgia, serif;
 }
 
 @theme inline {
