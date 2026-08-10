@@ -7,8 +7,6 @@
  *  - null / undefined  未分类
  */
 
-import { prisma } from './prisma';
-
 export interface PresetCategory {
   key: string;          // 用于 "preset:<key>"
   text: string;         // 中文名
@@ -30,6 +28,8 @@ export const PRESET_CATEGORIES: PresetCategory[] = [
 /** 从数据库加载预置分类到 PRESET_CATEGORIES（原地替换数组内容，保持引用不变）。仅在服务端调用。 */
 export async function loadPresetCategories(): Promise<void> {
   try {
+    // 动态导入避免客户端组件引用本文件时触发服务端依赖链
+    const { prisma } = await import('./prisma');
     let rows = await prisma.presetQuizCategory.findMany({ orderBy: { order: 'asc' } });
     if (rows.length === 0) {
       // 首次迁移：将默认值写入数据库
