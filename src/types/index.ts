@@ -155,3 +155,23 @@ export interface Note {
   createdAt: number;
   updatedAt: number;
 }
+
+/** 答题记录摘要（来自 GET /api/results，不含完整 results 数组） */
+export interface RecordSummary {
+  id: string;
+  quizId: string;
+  name: string;
+  score: number;
+  totalScore: number;
+  status: 'draft' | 'submitted';
+  submittedAt: string;
+  categoryId?: string | null;
+  quiz: { id: string; title: string };
+  summary: {
+    totalQuestions: number;
+    objectiveCount: number;
+    subjectiveCount: number;
+    correctCount: number;
+    subjectiveAvgScore: number;
+  };
+}
