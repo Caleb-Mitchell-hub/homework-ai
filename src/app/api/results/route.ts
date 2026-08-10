@@ -34,35 +34,119 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const quizId = searchParams.get('quizId');
 
-    const where = quizId
-      ? { userId: payload.userId, quizId }
-      : { userId: payload.userId };
-
-    const results = await prisma.quizResult.findMany({
-      where,
-      orderBy: { submittedAt: 'desc' },
-      include: {
-        quiz: {
-          select: {
-            id: true,
-            title: true,
-          },
+    // 旧版兼容：quizId 参数 → 返回该题库全部记录（含完整 results，供答题页用）
+    if (quizId) {
+      const where = { userId: payload.userId, quizId };
+      const results = await prisma.quizResult.findMany({
+        where,
+        orderBy: { submittedAt: 'desc' },
+        include: {
+          quiz: { select: { id: true, title: true } },
         },
-      },
-    });
+      });
 
-    // 把 results 字段（数据库存的是 JSON 字符串）解析成对象数组，方便前端直接使用
-    const parsed = results.map((r) => {
-      let arr: any[] = [];
+      const parsed = results.map((r) => {
+        let arr: any[] = [];
+        try {
+          arr = JSON.parse(r.results || '[]');
+        } catch { /* keep [] */ }
+        return { ...r, results: arr };
+      });
+
+      return NextResponse.json({ results: parsed });
+    }
+
+    // 新版：分页 + 搜索 + 筛选 + 排序 + 摘要模式
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+    const pageSize = Math.min(50, Math.max(1, parseInt(searchParams.get('pageSize') || '20', 10)));
+    const search = searchParams.get('search') || undefined;
+    const categoryId = searchParams.get('categoryId') || undefined;
+    const statusFilter = searchParams.get('status') || undefined;
+    const sort = searchParams.get('sort') || 'recent';
+    const sysCategory = searchParams.get('sysCategory') || undefined;
+
+    const where: any = { userId: payload.userId };
+
+    if (statusFilter === 'submitted') {
+      where.status = 'submitted';
+    } else if (statusFilter === 'draft') {
+      where.status = 'draft';
+    }
+
+    // 系统分类规则
+    if (sysCategory === 'recent') {
+      where.status = 'submitted';
+      where.submittedAt = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+    } else if (sysCategory === 'uncat') {
+      where.categoryId = null;
+      where.status = 'submitted';
+    } else if (sysCategory === 'draft') {
+      where.status = 'draft';
+    }
+
+    if (categoryId) {
+      where.categoryId = categoryId;
+    }
+
+    if (search) {
+      where.name = { contains: search };
+    }
+
+    let orderBy: any = { submittedAt: 'desc' };
+    if (sort === 'score_desc') {
+      orderBy = { score: 'desc' };
+    } else if (sort === 'score_asc') {
+      orderBy = { score: 'asc' };
+    }
+
+    const [rawResults, total] = await Promise.all([
+      prisma.quizResult.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          quiz: { select: { id: true, title: true } },
+        },
+      }),
+      prisma.quizResult.count({ where }),
+    ]);
+
+    // 构建摘要（解析 results JSON 计数，不返回完整内容）
+    const SUBJECTIVE_TYPES = new Set(['interview', 'essay']);
+    const results = rawResults.map((r: any) => {
+      let items: any[] = [];
       try {
-        arr = JSON.parse(r.results || '[]');
-      } catch {
-        arr = [];
+        items = JSON.parse(r.results || '[]');
+      } catch { /* keep [] */ }
+
+      let correctCount = 0;
+      let subjectiveScoreSum = 0;
+      let subjectiveScoredCount = 0;
+
+      for (const item of items) {
+        if (item.correct) correctCount++;
+        if (typeof item.interviewScore === 'number') {
+          subjectiveScoreSum += item.interviewScore;
+          subjectiveScoredCount++;
+        }
       }
-      return { ...r, results: arr };
+
+      const summary = {
+        totalQuestions: items.length,
+        objectiveCount: (r as any).objectiveCount ?? 0,
+        subjectiveCount: (r as any).subjectiveCount ?? 0,
+        correctCount,
+        subjectiveAvgScore: subjectiveScoredCount > 0
+          ? Math.round(subjectiveScoreSum / subjectiveScoredCount)
+          : 0,
+      };
+
+      const { results: _results, ...rest } = r;
+      return { ...rest, summary };
     });
 
-    return NextResponse.json({ results: parsed });
+    return NextResponse.json({ results, total, page, pageSize });
   } catch (error) {
     console.error('获取结果列表错误:', error);
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
