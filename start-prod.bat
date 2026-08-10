@@ -93,7 +93,7 @@ echo   🛑 按 Ctrl+C 停止服务
 echo   ─────────────────────────────────────────────────
 echo.
 
-call npm run start -- -p %PORT%
+call npm run start
 
 pause
 exit /b
