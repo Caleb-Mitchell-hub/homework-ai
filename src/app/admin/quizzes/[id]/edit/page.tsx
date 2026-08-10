@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import AdminSidebar from '@/components/AdminSidebar';
 import { useDialog } from '@/components/DialogProvider';
-import { PRESET_CATEGORIES, PREFIX_PRESET } from '@/lib/quizCategories';
+import { PREFIX_PRESET } from '@/lib/quizCategories';
 
 interface Question {
   id?: string;
@@ -29,6 +29,17 @@ export default function EditQuizPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [presetCategories, setPresetCategories] = useState<{ key: string; text: string; emoji: string }[]>([]);
+
+  // 从 API 加载预设分类
+  useEffect(() => {
+    fetch('/api/quiz-categories/presets')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.presets) setPresetCategories(data.presets);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (adminLoading) return;
@@ -212,7 +223,7 @@ export default function EditQuizPage() {
             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
           >
             <option value="">未分类</option>
-            {PRESET_CATEGORIES.map((c) => (
+            {presetCategories.map((c) => (
               <option key={c.key} value={`${PREFIX_PRESET}${c.key}`}>
                 {c.emoji} {c.text}
               </option>

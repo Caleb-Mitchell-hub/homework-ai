@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/DialogProvider';
 import { SERIF } from '@/components/SidebarParts';
-import { getCategoryDisplay, PRESET_CATEGORIES, PREFIX_PRESET, PREFIX_USER } from '@/lib/quizCategories';
+import { getCategoryDisplay, PREFIX_PRESET, PREFIX_USER } from '@/lib/quizCategories';
 import { useQuizCategories } from '@/contexts/QuizCategoryContext';
 import { quizToMarkdown } from '@/lib/quiz-to-markdown';
 import JSZip from 'jszip';
@@ -497,7 +497,7 @@ export default function BanksPage() {
             className="px-3 py-2 bg-white/80 border border-slate-200 rounded-lg text-[13px] text-slate-700 outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
           >
             <option value="all">全部分类</option>
-            {PRESET_CATEGORIES.map((c) => (
+            {quizCat.presetCategories.map((c) => (
               <option key={c.key} value={`${PREFIX_PRESET}${c.key}`}>{c.emoji} {c.text}</option>
             ))}
             <option value="uncat">📂 未分类</option>
@@ -695,7 +695,7 @@ export default function BanksPage() {
                         className="px-2 py-1.5 text-[11px] bg-transparent border border-slate-200 rounded text-slate-500 outline-none focus:border-sky-400 cursor-pointer hover:bg-white"
                       >
                         <option value="">未分类</option>
-                        {PRESET_CATEGORIES.map((c) => (
+                        {quizCat.presetCategories.map((c) => (
                           <option key={c.key} value={`${PREFIX_PRESET}${c.key}`}>{c.emoji} {c.text}</option>
                         ))}
                         {quizCat.userCategories.length > 0 && (

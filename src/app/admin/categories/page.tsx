@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import AdminSidebar from '@/components/AdminSidebar';
 import Toast from '@/components/Toast';
@@ -41,9 +41,41 @@ export default function AdminCategoriesPage() {
   // 删除状态
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // 图标文件上传
+  const newIconInputRef = useRef<HTMLInputElement>(null);
+  const editIconInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingNewIcon, setUploadingNewIcon] = useState(false);
+  const [uploadingEditIcon, setUploadingEditIcon] = useState(false);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setToastVisible(true);
+  };
+
+  /** 上传图标文件，返回 URL */
+  const uploadIcon = async (file: File): Promise<string | null> => {
+    const token = localStorage.getItem('adminToken');
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('/api/admin/upload/category-icon', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || '上传失败'); return null; }
+      return data.url;
+    } catch { showToast('网络错误'); return null; }
+  };
+
+  /** 渲染图标：图片 URL → <img>，emoji/文字 → 文本 */
+  const renderIcon = (icon: string | null | undefined, size: 'lg' | 'sm' = 'lg') => {
+    if (!icon) return <span className={size === 'lg' ? 'text-lg' : 'text-base'}>📘</span>;
+    if (icon.startsWith('http') || icon.startsWith('/')) {
+      return <img src={icon} alt="" className={size === 'lg' ? 'w-6 h-6 rounded object-cover' : 'w-5 h-5 rounded object-cover'} />;
+    }
+    return <span className={size === 'lg' ? 'text-lg' : 'text-base'}>{icon}</span>;
   };
 
   const fetchCategories = useCallback(async () => {
@@ -187,9 +219,32 @@ export default function AdminCategoriesPage() {
               value={newEmoji}
               onChange={(e) => setNewEmoji(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-              placeholder="图标 emoji"
-              className="w-32 px-4 py-2.5 bg-white/80 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 text-sm"
+              placeholder="图标（emoji 或 URL）"
+              className="w-40 px-4 py-2.5 bg-white/80 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 text-sm"
             />
+            <input
+              ref={newIconInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setUploadingNewIcon(true);
+                const url = await uploadIcon(file);
+                setUploadingNewIcon(false);
+                if (url) setNewEmoji(url);
+                if (newIconInputRef.current) newIconInputRef.current.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => newIconInputRef.current?.click()}
+              disabled={uploadingNewIcon}
+              className="px-3 py-2.5 text-[11px] bg-white/80 border border-slate-200 rounded-xl text-slate-500 hover:text-indigo-500 hover:border-indigo-300 transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              {uploadingNewIcon ? '上传中…' : '📷 上传'}
+            </button>
             <input
               type="number"
               value={newOrder}
@@ -232,7 +287,7 @@ export default function AdminCategoriesPage() {
                 <tbody>
                   {categories.map((cat) => (
                     <tr key={cat.id} className="border-b border-slate-100/60 hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4 text-lg">{cat.emoji || '📘'}</td>
+                      <td className="px-6 py-4">{renderIcon(cat.emoji)}</td>
                       <td className="px-6 py-4 text-slate-800 font-medium text-[13.5px]">{cat.text}</td>
                       <td className="px-6 py-4 text-slate-400 text-[12.5px] font-mono">{cat.key}</td>
                       <td className="px-6 py-4 text-slate-600 text-[13px] tabular-nums">{cat.quizCount}</td>
@@ -282,9 +337,37 @@ export default function AdminCategoriesPage() {
                   className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 text-sm" />
               </div>
               <div>
-                <label className="block text-[12px] text-slate-500 mb-1">图标 emoji</label>
-                <input type="text" value={editEmoji} onChange={(e) => setEditEmoji(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 text-sm" />
+                <label className="block text-[12px] text-slate-500 mb-1">图标（emoji 或图片 URL）</label>
+                <div className="flex gap-2">
+                  <input type="text" value={editEmoji} onChange={(e) => setEditEmoji(e.target.value)}
+                    className="flex-1 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 text-sm" />
+                  <input
+                    ref={editIconInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setUploadingEditIcon(true);
+                      const url = await uploadIcon(file);
+                      setUploadingEditIcon(false);
+                      if (url) setEditEmoji(url);
+                      if (editIconInputRef.current) editIconInputRef.current.value = '';
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => editIconInputRef.current?.click()}
+                    disabled={uploadingEditIcon}
+                    className="px-3 py-2.5 text-[11px] bg-white/80 border border-slate-200 rounded-xl text-slate-500 hover:text-indigo-500 hover:border-indigo-300 transition-colors disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {uploadingEditIcon ? '上传中…' : '📷 上传'}
+                  </button>
+                </div>
+                {editEmoji && (editEmoji.startsWith('http') || editEmoji.startsWith('/')) && (
+                  <div className="mt-2">{renderIcon(editEmoji)}</div>
+                )}
               </div>
               <div>
                 <label className="block text-[12px] text-slate-500 mb-1">排序</label>

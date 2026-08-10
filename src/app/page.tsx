@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { getCategoryDisplay, PREFIX_PRESET, PRESET_CATEGORIES } from '@/lib/quizCategories';
+import { getCategoryDisplay, PREFIX_PRESET } from '@/lib/quizCategories';
+import { useQuizCategories } from '@/contexts/QuizCategoryContext';
 import SignupBonusModal from '@/components/SignupBonusModal';
 
 interface QuizListItem {
@@ -28,6 +29,7 @@ function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, token, loading } = useAuth();
+  const quizCat = useQuizCategories();
   const [quizzes, setQuizzes] = useState<QuizListItem[]>([]);
   const [loadingQuizzes, setLoadingQuizzes] = useState(true);
   const [professions, setProfessions] = useState<{ id: string; name: string }[]>([]);
@@ -228,7 +230,7 @@ function HomeContent() {
             全部 <span className="ml-1 opacity-70 tabular-nums">{quizzes.length}</span>
           </button>
           {/* 预设分类 */}
-          {PRESET_CATEGORIES.map((cat) => {
+          {quizCat.presetCategories.map((cat) => {
             const id = `${PREFIX_PRESET}${cat.key}`;
             const count = categoryCounts[id] || 0;
             const isActive = activeCategory === cat.key || activeCategory === id;

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { PRESET_CATEGORIES, PREFIX_USER } from '@/lib/quizCategories';
+import { PREFIX_USER, PREFIX_PRESET, type PresetCategory } from '@/lib/quizCategories';
 
 /**
  * 题库分类 Context —— 预设 + 私有双层。
@@ -25,6 +25,8 @@ export interface QuizUserCategory {
 }
 
 interface QuizCategoryContextValue {
+  /** 预设分类（从 API 加载，非编译时静态值） */
+  presetCategories: PresetCategory[];
   /** 预设 + 私有合并后的分类列表(按预设在前,私有在后) */
   all: Array<
     | { id: string; kind: 'preset'; key: string; text: string; emoji: string }
@@ -43,6 +45,7 @@ export function QuizCategoryProvider({ children }: { children: ReactNode }) {
   const { user, token } = useAuth();
   const currentUserId: string | null = user?.id ?? null;
   const [userCategories, setUserCategories] = useState<QuizUserCategory[]>([]);
+  const [presetCategories, setPresetCategories] = useState<PresetCategory[]>([]);
   const lastUserIdRef = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -61,6 +64,22 @@ export function QuizCategoryProvider({ children }: { children: ReactNode }) {
       console.error('加载题库分类失败:', e);
     }
   }, [token]);
+
+  // 首次挂载时从 API 加载预设分类
+  useEffect(() => {
+    fetch('/api/quiz-categories/presets')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.presets) {
+          setPresetCategories(data.presets.map((p: { key: string; text: string; emoji: string }) => ({
+            key: p.key,
+            text: p.text,
+            emoji: p.emoji ?? '',
+          })));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // user 切换时重新加载
   useEffect(() => {
@@ -128,8 +147,8 @@ export function QuizCategoryProvider({ children }: { children: ReactNode }) {
   );
 
   const all = [
-    ...PRESET_CATEGORIES.map((c) => ({
-      id: `${`preset:`}${c.key}`,
+    ...presetCategories.map((c) => ({
+      id: `${PREFIX_PRESET}${c.key}`,
       kind: 'preset' as const,
       key: c.key,
       text: c.text,
@@ -149,7 +168,7 @@ export function QuizCategoryProvider({ children }: { children: ReactNode }) {
 
   return (
     <QuizCategoryContext.Provider
-      value={{ all, userCategories, addUserCategory, removeUserCategory, currentUserId }}
+      value={{ presetCategories, all, userCategories, addUserCategory, removeUserCategory, currentUserId }}
     >
       {children}
     </QuizCategoryContext.Provider>
