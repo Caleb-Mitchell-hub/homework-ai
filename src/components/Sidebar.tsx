@@ -297,6 +297,20 @@ export default function Sidebar({ open, onClose, onOpen }: Props) {
                   router.push('/settings');
                 }}
               />
+              <NavItem
+                tone={TONE_KEY}
+                icon={
+                  <svg className="w-[15px] h-[15px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                }
+                label="产品介绍"
+                active={pathname === '/welcome'}
+                onClick={() => {
+                  onClose();
+                  router.push('/welcome');
+                }}
+              />
             </>
           )}
         </div>

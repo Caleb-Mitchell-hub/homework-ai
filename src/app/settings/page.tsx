@@ -239,8 +239,25 @@ export default function SettingsPage() {
     <div className="max-w-4xl mx-auto px-4 py-8">
       {/* 头部 */}
       <div className="mb-8">
+        <button
+          onClick={() => router.back()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-slate-500 hover:text-slate-800 hover:bg-white/70 rounded-lg transition-all mb-3"
+        >
+          ← 返回
+        </button>
         <h1 className="text-2xl font-bold text-slate-900">⚙️ 个人设置</h1>
         <p className="text-sm text-slate-500 mt-1">管理账户信息与安全设置</p>
+
+        {/* 产品介绍入口 */}
+        <button
+          onClick={() => router.push('/welcome')}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-[13px] text-slate-600 hover:text-sky-600 hover:border-sky-300 hover:bg-sky-50 transition-all"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          查看产品介绍 · 了解 Homework AI 全部功能
+        </button>
       </div>
 
       {/* 第一行：基本信息 + 修改密码 */}
