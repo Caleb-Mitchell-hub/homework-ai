@@ -288,3 +288,14 @@ model ResultCategory {
 
   @@index([userId])
 }
+
+/// 预置题库分类（管理员配置，全局共享）
+model PresetQuizCategory {
+  id        String   @id @default(cuid())
+  key       String   @unique @db.VarChar(40)
+  text      String   @db.VarChar(40)
+  emoji     String?  @db.VarChar(10)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
