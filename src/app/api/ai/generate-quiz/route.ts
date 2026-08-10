@@ -88,10 +88,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
 
-  // 优先用用户 token，其次用管理员 token
+  // 先检查管理员 token（管理员免积分），再检查用户 token
   let userId: string;
-  const userPayload = verifyToken(token);
-  if (userPayload) {
+  let isAdmin = false;
+  const adminPayload = verifyAdminToken(token);
+  if (adminPayload) {
+    userId = adminPayload.userId;
+    isAdmin = true;
+  } else {
+    const userPayload = verifyToken(token);
+    if (!userPayload) {
+      return NextResponse.json({ error: '无效的token' }, { status: 401 });
+    }
     if (userPayload.isGuest) {
       return NextResponse.json(
         { error: '游客暂不支持 AI 生成题库，请登录后使用' },
@@ -99,12 +107,6 @@ export async function POST(req: NextRequest) {
       );
     }
     userId = userPayload.userId;
-  } else {
-    const adminPayload = verifyAdminToken(token);
-    if (!adminPayload) {
-      return NextResponse.json({ error: '无效的token' }, { status: 401 });
-    }
-    userId = adminPayload.userId;
   }
 
   const body = await req.json().catch(() => null);
@@ -134,22 +136,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 预估积分 + 扣费
+  // 预估积分 + 扣费（管理员免积分）
   const estimatedCost = estimateGenerateCost(cleaned!);
-  try {
-    await chargeForGenerate(userId, estimatedCost);
-  } catch (err) {
-    if (err instanceof InsufficientCreditsForGenerateError) {
-      return NextResponse.json(
-        {
-          error: `积分不足：需要 ${err.required} 积分，当前 ${err.balance} 积分`,
-          required: err.required,
-          balance: err.balance,
-        },
-        { status: 400 },
-      );
+  if (!isAdmin) {
+    try {
+      await chargeForGenerate(userId, estimatedCost);
+    } catch (err) {
+      if (err instanceof InsufficientCreditsForGenerateError) {
+        return NextResponse.json(
+          {
+            error: `积分不足：需要 ${err.required} 积分，当前 ${err.balance} 积分`,
+            required: err.required,
+            balance: err.balance,
+          },
+          { status: 400 },
+        );
+      }
+      throw err;
     }
-    throw err;
   }
 
   // SSE 流
@@ -244,11 +248,11 @@ export async function POST(req: NextRequest) {
           parsed = extractJson<{ questions?: any[] }>(fullContent);
         } catch {
           console.error('[generate-quiz] JSON 解析失败');
-          // JSON 解析失败 → 退款
-          await adjustForGenerate(userId, estimatedCost);
+          // JSON 解析失败 → 退款（管理员免积分，无需退款）
+          if (!isAdmin) await adjustForGenerate(userId, estimatedCost);
           send({
             type: 'error',
-            message: 'AI 返回格式异常，积分已退还，请重试',
+            message: isAdmin ? 'AI 返回格式异常，请重试' : 'AI 返回格式异常，积分已退还，请重试',
             code: 'PARSE_FAILED',
           });
           return;
@@ -260,11 +264,11 @@ export async function POST(req: NextRequest) {
           parsed.questions.length === 0
         ) {
           console.error('[generate-quiz] AI 未生成有效题目');
-          await adjustForGenerate(userId, estimatedCost);
+          if (!isAdmin) await adjustForGenerate(userId, estimatedCost);
           send({
             type: 'error',
             message:
-              'AI 未生成有效题目，积分已退还，请修改提示词后重试',
+              isAdmin ? 'AI 未生成有效题目，请修改提示词后重试' : 'AI 未生成有效题目，积分已退还，请修改提示词后重试',
             code: 'EMPTY_RESULT',
           });
           return;
@@ -277,13 +281,13 @@ export async function POST(req: NextRequest) {
           normalizeAIOutputToQuestions(parsed.questions, genId),
         );
 
-        // 计算实际积分消耗 + 调整差额
+        // 计算实际积分消耗 + 调整差额（管理员免积分）
         const actualCost = computeActualCost(
           fullPrompt.length,
           fullContent.length,
         );
         const diff = estimatedCost - actualCost;
-        if (diff !== 0) {
+        if (diff !== 0 && !isAdmin) {
           console.log('[generate-quiz] 积分调整: 预估=%d 实际=%d 差额=%d', estimatedCost, actualCost, diff);
           await adjustForGenerate(userId, diff);
         }
@@ -312,22 +316,26 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         if (err instanceof Error && err.message === 'aborted') {
           console.log('[generate-quiz] 客户端断开或超时，已接收 %d 字符', fullContent.length);
-          // 超时/断开也退款（用户未拿到完整结果）
-          try {
-            await adjustForGenerate(userId, estimatedCost);
-            console.log('[generate-quiz] 已退款 %d 积分（超时/断开）', estimatedCost);
-          } catch (refundErr) {
-            console.error('[generate-quiz] 退款失败:', refundErr);
+          // 超时/断开也退款（管理员免积分，无需退款）
+          if (!isAdmin) {
+            try {
+              await adjustForGenerate(userId, estimatedCost);
+              console.log('[generate-quiz] 已退款 %d 积分（超时/断开）', estimatedCost);
+            } catch (refundErr) {
+              console.error('[generate-quiz] 退款失败:', refundErr);
+            }
           }
         } else {
           const errorMsg = err instanceof Error ? err.message : String(err);
           console.error('[generate-quiz] 生成失败:', errorMsg, 'provider:', provider.baseURL);
-          // 异常 → 退款
-          try {
-            await adjustForGenerate(userId, estimatedCost);
-            console.log('[generate-quiz] 已退款 %d 积分', estimatedCost);
-          } catch (refundErr) {
-            console.error('[generate-quiz] 退款失败:', refundErr);
+          // 异常 → 退款（管理员免积分，无需退款）
+          if (!isAdmin) {
+            try {
+              await adjustForGenerate(userId, estimatedCost);
+              console.log('[generate-quiz] 已退款 %d 积分', estimatedCost);
+            } catch (refundErr) {
+              console.error('[generate-quiz] 退款失败:', refundErr);
+            }
           }
           try {
             controller.enqueue(

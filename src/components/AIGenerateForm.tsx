@@ -21,12 +21,14 @@ interface Props {
   onGenerate: (topic: string, counts: Record<string, number>) => void;
   onCopyPrompt: (topic: string, counts: Record<string, number>) => void;
   disabled?: boolean;
+  hideCredits?: boolean;
 }
 
 export default function AIGenerateForm({
   onGenerate,
   onCopyPrompt,
   disabled,
+  hideCredits,
 }: Props) {
   const [topic, setTopic] = useState('');
   const [counts, setCounts] = useState<Record<string, number>>({
@@ -131,12 +133,15 @@ export default function AIGenerateForm({
 
       {/* 预估积分 + 操作按钮 */}
       <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-        <div className="text-[13px] text-slate-600">
-          预估消耗：
-          <span className="font-bold text-sky-600">
-            ⚡ {estimatedCost} 积分
-          </span>
-        </div>
+        {!hideCredits && (
+          <div className="text-[13px] text-slate-600">
+            预估消耗：
+            <span className="font-bold text-sky-600">
+              ⚡ {estimatedCost} 积分
+            </span>
+          </div>
+        )}
+        {hideCredits && <div />}
         <div className="flex gap-3">
           <button
             type="button"

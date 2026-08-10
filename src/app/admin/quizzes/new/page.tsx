@@ -308,6 +308,7 @@ export default function NewQuizPage() {
                 onGenerate={handleGenerate}
                 onCopyPrompt={handleCopyPrompt}
                 disabled={generating || saving}
+                hideCredits
               />
             </div>
           )}
