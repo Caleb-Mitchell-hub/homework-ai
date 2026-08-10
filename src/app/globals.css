@@ -426,7 +426,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  @keyframes welcome-float {
-    0%, 100% { transform: none; }
+  .welcome-shape {
+    animation: none !important;
   }
 }

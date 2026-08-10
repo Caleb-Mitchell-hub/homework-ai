@@ -12,7 +12,7 @@ function FloatingShape({
 }) {
   return (
     <div
-      className={`absolute rounded-full opacity-20 ${className}`}
+      className={`welcome-shape absolute rounded-full opacity-20 ${className}`}
       style={{
         ...style,
         animationName: 'welcome-float',
@@ -63,7 +63,7 @@ export default function WelcomeHero() {
       >
         <h1
           className="text-[48px] sm:text-[56px] leading-[1.1] mb-4 tracking-[-0.02em]"
-          style={{ fontFamily: "var(--font-serif), 'Songti SC', serif", fontStyle: 'italic', fontWeight: 500 }}
+          style={{ fontFamily: "var(--font-fraunces), 'Songti SC', serif", fontStyle: 'italic', fontWeight: 500 }}
         >
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-emerald-400">
             Homework AI
