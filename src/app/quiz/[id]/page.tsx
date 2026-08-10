@@ -7,7 +7,6 @@ import { useCategories } from '@/contexts/CategoryContext';
 import { gradeQuiz } from '@/lib/checker';
 import { Quiz, Answer, Question } from '@/types';
 import QuestionCard from '@/components/QuestionCard';
-import ResultCard from '@/components/ResultCard';
 import AnswerSheet from '@/components/AnswerSheet';
 import CategorySelect from '@/components/CategorySelect';
 import Toast from '@/components/Toast';
@@ -45,6 +44,8 @@ export default function QuizPage() {
   const [remainingSec, setRemainingSec] = useState<number | null>(null);
   // 是否已自动提交（避免重复弹窗）
   const autoSubmittedRef = useRef(false);
+  // 用户主动"重新答题"后跳过服务端答案恢复
+  const skipRestoreRef = useRef(false);
   // 5 分钟 / 1 分钟提醒已触发过(避免重复弹)
   const warned5minRef = useRef(false);
   const warned1minRef = useRef(false);
@@ -91,8 +92,13 @@ export default function QuizPage() {
   }, [params.id, token, router]);
 
   // 加载现有结果(draft 优先 → submitted),恢复答案 / 名称 / 分类
+  // 用户主动点击"重新答题"后跳过恢复，确保真正全新开始
   useEffect(() => {
     if (!quiz || !token) return;
+    if (skipRestoreRef.current) {
+      skipRestoreRef.current = false; // 仅跳过一次，下次挂载正常恢复
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -103,12 +109,13 @@ export default function QuizPage() {
         const data = await res.json();
         const list: any[] = data.results || [];
         if (cancelled || list.length === 0) return;
-        // 优先取 draft(没 draft 才取最新的 submitted,用于"重答已提交"场景)
+        // 只恢复草稿（未完成答题），不恢复已提交的历史记录
+        // 每次进入题库都应该是全新的一轮答题
         const draft = list.find((r) => r.status === 'draft');
-        const latest = draft ?? list[0];
+        if (!draft) return; // 无草稿 = 全新答题，不恢复任何旧答案
         // 还原 answers
         const restored: Record<string, string> = {};
-        for (const item of latest.results || []) {
+        for (const item of draft.results || []) {
           if (item?.questionId && typeof item.userAnswer === 'string') {
             restored[item.questionId] = item.userAnswer;
           }
@@ -116,11 +123,11 @@ export default function QuizPage() {
         setAnswers(restored);
         // 名称:Quiz.defaultName 优先,否则用结果名
         if (quiz.defaultName) setQuizName(quiz.defaultName);
-        else if (latest.name) setQuizName(latest.name);
+        else if (draft.name) setQuizName(draft.name);
         // 分类
         if (quiz.defaultCategoryId) setSelectedCategoryId(quiz.defaultCategoryId);
         // 记录结果名,供 doSubmit fallback 使用
-        if (latest.name) setDraftName(latest.name);
+        if (draft.name) setDraftName(draft.name);
       } catch (e) {
         console.error('加载 draft 失败:', e);
       }
@@ -337,10 +344,29 @@ export default function QuizPage() {
     setAnswers({});
     setSubmitted(false);
     setResult(null);
+    setAutoGrading(false);
+    setAutoGradeProgress({ done: 0, total: 0 });
     setRemainingSec(quiz?.timeLimit && quiz.timeLimit > 0 ? quiz.timeLimit * 60 : null);
     autoSubmittedRef.current = false;
+    skipRestoreRef.current = true;
     if (quiz) {
       localStorage.removeItem(`quiz_progress_${quiz.id}`);
+      // 删除服务端草稿，防止刷新页面后旧答案被恢复
+      if (token) {
+        fetch(`/api/results?quizId=${quiz.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then(async (res) => {
+          if (!res.ok) return;
+          const data = await res.json();
+          const draft = (data.results || []).find((r: any) => r.status === 'draft');
+          if (draft) {
+            fetch(`/api/results?id=${draft.id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+      }
     }
   };
 

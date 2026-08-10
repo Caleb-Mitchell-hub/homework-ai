@@ -2,12 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCategories } from '@/contexts/CategoryContext';
 import { useQuizCategories } from '@/contexts/QuizCategoryContext';
-import { QuizResult } from '@/types';
 import { useRouter, usePathname } from 'next/navigation';
 import SettingsPanel from '@/components/SettingsPanel';
-import CategoryTree from '@/components/CategoryTree';
 import CreditBadge from '@/components/CreditBadge';
 import { sha256Hex } from '@/lib/hash';
 import { useDialog } from '@/components/DialogProvider';
@@ -24,32 +21,25 @@ import {
 } from '@/components/SidebarParts';
 
 interface Props {
-  onSelectResult?: (result: QuizResult) => void;
   open: boolean;
   onClose: () => void;
   /** peek 模式:hover 把手 / 点击把手时通知父级打开抽屉 */
   onOpen?: () => void;
-  /** 当前在主区域打开的记录 id（用于侧栏内高亮） */
-  activeResultId?: string | null;
 }
 
 const TONE_KEY = 'user' as const;
 
-export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeResultId }: Props) {
+export default function Sidebar({ open, onClose, onOpen }: Props) {
   const { token: userToken, user } = useAuth();
   // 兼容 admin 登录：admin 的 token 存在 localStorage.adminToken
   const [token, setToken] = useState<string | null>(userToken);
   useEffect(() => {
     setToken(userToken || (typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null));
   }, [userToken]);
-  const cat = useCategories();
   const quizCat = useQuizCategories();
   const dialog = useDialog();
   const router = useRouter();
   const pathname = usePathname();
-  const [results, setResults] = useState<any[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [selectMode, setSelectMode] = useState(false);
   const [currentQuizId, setCurrentQuizId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** 隐藏的 file input ref —— 点"上传新题库"导航项时直接触发 */
@@ -64,25 +54,32 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
     hasSubmitted: boolean;
   } | null>(null);
 
+  // 30 秒轮询获取记录计数(轻量,替代旧版 5 秒全量拉取)
+  const [counts, setCounts] = useState<{
+    total: number;
+    recent: number;
+    draft: number;
+    uncat: number;
+    byUserCategory: Record<string, number>;
+  } | null>(null);
+
   useEffect(() => {
     if (!token) return;
-
-    const fetchResults = async () => {
+    const fetchCounts = async () => {
       try {
-        const res = await fetch('/api/results', {
-          headers: { 'Authorization': `Bearer ${token}` },
+        const res = await fetch('/api/results/counts', {
+          headers: { Authorization: `Bearer ${token}` },
         });
-        const data = await res.json();
         if (res.ok) {
-          setResults(data.results || []);
+          const data = await res.json();
+          setCounts(data);
         }
-      } catch (error) {
-        console.error('获取结果失败:', error);
+      } catch (e) {
+        // 静默失败
       }
     };
-
-    fetchResults();
-    const interval = setInterval(fetchResults, 5000);
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 30000);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -90,13 +87,6 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
     const quizId = localStorage.getItem('currentQuizId');
     setCurrentQuizId(quizId);
   }, []);
-
-  // 抽屉关闭时自动退出批量选择模式
-  useEffect(() => {
-    if (open) return;
-    setSelectMode(false);
-    setSelectedIds(new Set());
-  }, [open]);
 
   // 路由变化时自动关闭抽屉(点导航项后)
   useEffect(() => {
@@ -166,73 +156,6 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
     } finally {
       setUploading(false);
     }
-  };
-
-  const handleDelete = async (result: any) => {
-    const ok = await dialog.confirm({
-      title: '删除记录',
-      message: '确定要删除这条记录吗?',
-      confirmText: '删除',
-      danger: true,
-    });
-    if (!ok) return;
-    try {
-      const res = await fetch(`/api/results?id=${result.id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setResults((prev) => prev.filter((r) => r.id !== result.id));
-      }
-    } catch (error) {
-      console.error('删除失败:', error);
-    }
-  };
-
-  const handleBatchDelete = async () => {
-    if (selectedIds.size === 0) return;
-    const ok = await dialog.confirm({
-      title: '批量删除',
-      message: `确定要删除选中的 ${selectedIds.size} 条记录吗?`,
-      confirmText: '删除',
-      danger: true,
-    });
-    if (!ok) return;
-
-    try {
-      for (const id of selectedIds) {
-        await fetch(`/api/results?id=${id}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-      }
-      setResults((prev) => prev.filter((r) => !selectedIds.has(r.id)));
-      setSelectedIds(new Set());
-      setSelectMode(false);
-    } catch (error) {
-      console.error('批量删除失败:', error);
-    }
-  };
-
-  const toggleSelect = (id: string) => {
-    const newSet = new Set(selectedIds);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setSelectedIds(newSet);
-  };
-
-  const selectAll = () => {
-    if (selectedIds.size === results.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(results.map((r) => r.id)));
-  };
-
-  // 批量把选中记录归入某分类（点击 CategoryTree 的分类行触发）
-  const handleBatchAssign = (categoryId: string | null) => {
-    for (const id of selectedIds) {
-      cat.setResultCategory(id, categoryId);
-    }
-    setSelectedIds(new Set());
-    setSelectMode(false);
   };
 
   // 重传选择层处理
@@ -470,75 +393,54 @@ export default function Sidebar({ onSelectResult, open, onClose, onOpen, activeR
           </div>
         )}
 
-        {/* 答题记录 —— 折叠分类树 */}
+        {/* 答题记录 */}
         {user && (
           <div className="px-3 mt-3">
-            <SectionLabel
-              right={
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[9.5px] text-slate-300 tabular-nums">
-                    {results.length}
-                  </span>
-                  <button
-                    onClick={() => {
-                      if (selectMode) {
-                        setSelectMode(false);
-                        setSelectedIds(new Set());
-                      } else {
-                        setSelectMode(true);
-                      }
-                    }}
-                    className={`text-[9.5px] tracking-[0.15em] uppercase px-1.5 py-0.5 rounded transition-colors ${
-                      selectMode
-                        ? 'bg-sky-400 text-white'
-                        : 'text-slate-400 hover:text-sky-500 hover:bg-sky-50'
-                    }`}
-                  >
-                    {selectMode ? '取消' : '管理'}
-                  </button>
-                </div>
-              }
-            >
+            <SectionLabel>
               Records · 答题记录
             </SectionLabel>
 
-            {selectMode && (
-              <div className="flex gap-1.5 mb-2.5">
+            {counts ? (
+              <div className="space-y-0.5 mt-1 mb-2">
                 <button
-                  onClick={selectAll}
-                  className="flex-1 py-1 bg-slate-100 text-slate-600 text-[10.5px] rounded hover:bg-slate-200"
+                  onClick={() => { onClose(); router.push('/records'); }}
+                  className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[11.5px] text-slate-700 hover:bg-white/60 transition-colors"
                 >
-                  {selectedIds.size === results.length ? '取消全选' : '全选'}
+                  <span>📋 全部记录</span>
+                  <span className="text-[10px] text-slate-400 tabular-nums">{counts.total}</span>
                 </button>
                 <button
-                  onClick={handleBatchDelete}
-                  disabled={selectedIds.size === 0}
-                  className="flex-1 py-1 bg-rose-400 text-white text-[10.5px] rounded hover:bg-rose-500 disabled:opacity-50"
+                  onClick={() => { onClose(); router.push('/records?sysCategory=recent'); }}
+                  className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[11.5px] text-sky-600 hover:bg-sky-50/60 transition-colors"
                 >
-                  删除
+                  <span>🕐 最近 7 天</span>
+                  <span className="text-[10px] text-sky-400 tabular-nums">{counts.recent}</span>
+                </button>
+                <button
+                  onClick={() => { onClose(); router.push('/records?status=draft'); }}
+                  className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[11.5px] text-amber-600 hover:bg-amber-50/60 transition-colors"
+                >
+                  <span>📝 草稿</span>
+                  <span className="text-[10px] text-amber-400 tabular-nums">{counts.draft}</span>
+                </button>
+                <button
+                  onClick={() => { onClose(); router.push('/records?sysCategory=uncat'); }}
+                  className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[11.5px] text-slate-500 hover:bg-white/60 transition-colors"
+                >
+                  <span>📂 未分类</span>
+                  <span className="text-[10px] text-slate-400 tabular-nums">{counts.uncat}</span>
                 </button>
               </div>
-            )}
-
-            {/* 在管理模式下：点击分类名 → 批量把选中记录归入该分类 */}
-            {selectMode && selectedIds.size > 0 && (
-              <div className="mb-2 px-1 text-[10px] text-slate-400 tracking-wider uppercase">
-                点击分类 · 把 {selectedIds.size} 条记录归入 →
-              </div>
-            )}
-
-            {results.length === 0 ? (
-              <p className="text-slate-400 text-[11px] px-1 py-2">暂无答题记录</p>
             ) : (
-              <CategoryTree
-                results={results}
-                activeResultId={activeResultId ?? null}
-                onResultClick={onSelectResult}
-                batchSelectedIds={selectMode ? selectedIds : undefined}
-                onBatchAssign={handleBatchAssign}
-                onBatchToggleSelect={toggleSelect}
-              />
+              <p className="text-slate-400 text-[11px] px-1 py-2">加载中...</p>
             )}
+
+            <button
+              onClick={() => { onClose(); router.push('/records'); }}
+              className="w-full text-center py-1.5 text-[11px] text-sky-500 hover:text-sky-600 hover:bg-sky-50/60 rounded-lg transition-colors"
+            >
+              查看全部 →
+            </button>
           </div>
         )}
       </div>
