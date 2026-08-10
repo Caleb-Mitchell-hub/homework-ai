@@ -61,7 +61,7 @@ export default function SetupPage() {
         setError(data.error || '设置失败');
         return;
       }
-      router.push('/');
+      router.push('/welcome');
     } catch {
       setError('网络错误');
     } finally {
@@ -80,9 +80,9 @@ export default function SetupPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ professionId }),
-      }).finally(() => router.push('/'));
+      }).finally(() => router.push('/welcome'));
     } else {
-      router.push('/');
+      router.push('/welcome');
     }
   };
 
