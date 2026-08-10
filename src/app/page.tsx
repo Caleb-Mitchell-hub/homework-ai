@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getCategoryDisplay, PREFIX_PRESET, PRESET_CATEGORIES } from '@/lib/quizCategories';
+import SignupBonusModal from '@/components/SignupBonusModal';
 
 interface QuizListItem {
   id: string;
@@ -33,6 +34,7 @@ function HomeContent() {
   const [guestProfessionId, setGuestProfessionId] = useState<string>(
     typeof window !== 'undefined' ? localStorage.getItem('guestProfessionId') || '' : ''
   );
+  const [signupBonus, setSignupBonus] = useState<number | null>(null);
 
   const activeCategory = searchParams.get('category') ?? 'all';
 
@@ -41,6 +43,16 @@ function HomeContent() {
       router.push('/login');
     }
   }, [user, loading, router]);
+
+  // 检测新用户注册奖励标记（注册成功后写入的 localStorage）
+  useEffect(() => {
+    if (!loading && user && !user.isGuest) {
+      const bonus = localStorage.getItem('signup_bonus');
+      if (bonus) {
+        setSignupBonus(parseInt(bonus, 10) || 300);
+      }
+    }
+  }, [loading, user]);
 
   // 加载职业列表
   useEffect(() => {
@@ -384,6 +396,14 @@ function HomeContent() {
           </section>
         )}
       </div>
+
+      {/* 新用户注册奖励弹窗 */}
+      {signupBonus !== null && (
+        <SignupBonusModal
+          amount={signupBonus}
+          onClose={() => setSignupBonus(null)}
+        />
+      )}
     </div>
   );
 }

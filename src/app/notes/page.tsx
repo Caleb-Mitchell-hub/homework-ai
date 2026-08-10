@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Note, NoteType, NoteSource } from '@/types';
 import MarkdownView from '@/components/MarkdownView';
@@ -20,6 +21,7 @@ const sourceLabels: Record<NoteSource, string> = {
 
 export default function NotesPage() {
   const { user, token } = useAuth();
+  const router = useRouter();
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<NoteType | 'all'>('all');
@@ -123,17 +125,25 @@ export default function NotesPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* 头部 */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">📝 我的笔记</h1>
-          <p className="text-sm text-slate-500 mt-1">管理所有题目笔记、答题笔记和AI输出记录</p>
-        </div>
+      <div className="mb-8">
+        <button
+          onClick={() => router.back()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-slate-500 hover:text-slate-800 hover:bg-white/70 rounded-lg transition-all mb-3"
+        >
+          ← 返回
+        </button>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">📝 我的笔记</h1>
+            <p className="text-sm text-slate-500 mt-1">管理所有题目笔记、答题笔记和AI输出记录</p>
+          </div>
         <button
           onClick={() => startEdit()}
           className="bg-indigo-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors"
         >
           + 新建笔记
         </button>
+        </div>
       </div>
 
       {/* 筛选栏 */}

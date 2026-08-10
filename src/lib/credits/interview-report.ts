@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { callChat } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
+import { extractJson } from '@/lib/ai/json-extractor';
 import { buildInterviewReportPrompt } from '@/lib/ai/interview-report-prompt';
 import type { InterviewQuestionResult } from '@/lib/ai/interview-report-prompt';
 
@@ -96,13 +97,22 @@ export async function generateInterviewReport(
       baseURL: provider.baseURL,
       apiKey,
       model: provider.model,
-      messages: [{ role: 'system', content: prompt }],
+      messages: [
+        { role: 'system', content: '你是一位资深面试官和技术导师。请严格按照 JSON 格式输出面试表现深度分析报告。' },
+        { role: 'user', content: prompt },
+      ],
       jsonMode: true,
-      maxTokens: 4000,
-      temperature: 0.5,
+      maxTokens: 16000,
+      temperature: 0.7,
     });
 
-    const parsed: InterviewReportResult = JSON.parse(content);
+    let parsed: InterviewReportResult;
+    try {
+      parsed = extractJson<InterviewReportResult>(content);
+    } catch (jsonErr: any) {
+      console.error('面试报告 JSON 解析失败，原始长度:', content.length, '前200字符:', content.slice(0, 200));
+      throw new Error(`AI 返回格式异常：${jsonErr?.message || '无法解析'}`);
+    }
 
     return {
       content: parsed,

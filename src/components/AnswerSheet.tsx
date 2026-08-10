@@ -102,11 +102,11 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
           [questionId]: { interviewScore: data.interviewScore, interviewFeedback: data.interviewFeedback },
         }));
       } else {
-        const err = await res.json();
-        alert(err.error || 'AI 评分失败');
+        const err = await res.json().catch(() => ({ error: 'AI 评分失败' }));
+        await dialog.alert({ title: '评分失败', message: err.error || 'AI 评分失败' });
       }
     } catch {
-      alert('AI 评分请求失败');
+      await dialog.alert({ title: '网络异常', message: 'AI 评分请求失败，请检查网络后重试' });
     } finally {
       setGradingQids((prev) => {
         const next = new Set(prev);
@@ -421,7 +421,14 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                               {(r as any)?.interviewFeedback?.suggestion && (
                                 <div className="text-[12px]">
                                   <span className="text-blue-600 font-medium">💡 建议：</span>
-                                  <span className="text-slate-600">{(r as any).interviewFeedback.suggestion}</span>
+                                  <div className="text-slate-600 mt-0.5">
+                                    <MarkdownView content={(r as any).interviewFeedback.suggestion} size="sm" />
+                                  </div>
+                                </div>
+                              )}
+                              {(r as any)?.aiComment && (
+                                <div className="mt-2 pt-2 border-t border-indigo-100">
+                                  <MarkdownView content={(r as any).aiComment} size="sm" />
                                 </div>
                               )}
                             </div>

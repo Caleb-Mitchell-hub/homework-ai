@@ -149,6 +149,7 @@ enum CreditReason {
   ai_explain
   ai_report
   ai_interview_report
+  ai_generate_quiz
   refund
 }
 
@@ -181,6 +182,7 @@ model AIExplanation {
   userId     String
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   questionId String
+  userAnswer String?  @db.Text
   costCredit Int
   content    String   @db.Text
   createdAt  DateTime @default(now())

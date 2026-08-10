@@ -196,6 +196,8 @@ export default function LoginPage() {
           localStorage.setItem('remember_password', password);
           localStorage.setItem('remember_flag', '1');
         }
+        // 标记新注册用户的300积分奖励，主页检测后弹出领取动画
+        localStorage.setItem('signup_bonus', '300');
         window.location.href = '/register/setup';
       } else {
         setMode('login');

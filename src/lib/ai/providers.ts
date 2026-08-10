@@ -48,7 +48,8 @@ export async function callChat(opts: CallChatOpts): Promise<string> {
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`AI ${res.status}: ${errText.slice(0, 200)}`);
+    console.error(`AI 服务商返回错误 (${res.status}):`, errText.slice(0, 500));
+    throw new Error(`AI 服务调用失败 (HTTP ${res.status})`);
   }
   const data = await res.json();
   return data?.choices?.[0]?.message?.content ?? '';
@@ -66,37 +67,49 @@ export interface StreamChunk {
 }
 
 /**
- * 流式调用 OpenAI 兼容 API。
+ * 流式调用 OpenAI 兼容 API（内部实现）。
  * - 逐 chunk 返回 delta 字符串
  * - 调用方通过拼接 delta 拿到完整响应
  * - 支持 AbortSignal 中断
- * - 部分 OpenAI 兼容服务不支持 jsonMode stream，会自动回退到无 response_format
  */
-export async function* callChatStream(opts: CallChatOpts): AsyncGenerator<StreamChunk> {
+async function* doStreamFetch(opts: CallChatOpts, useJsonMode: boolean): AsyncGenerator<StreamChunk> {
   const url = `${opts.baseURL.replace(/\/$/, '')}/chat/completions`;
   const signal = opts.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${opts.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: opts.model,
-      messages: opts.messages,
-      response_format: opts.jsonMode ? { type: 'json_object' } : undefined,
-      temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? 16000,
-      stream: true,
-    }),
-    signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${opts.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: opts.model,
+        messages: opts.messages,
+        response_format: useJsonMode ? { type: 'json_object' } : undefined,
+        temperature: opts.temperature ?? 0.2,
+        max_tokens: opts.maxTokens ?? 16000,
+        stream: true,
+      }),
+      signal,
+    });
+  } catch (fetchErr) {
+    const cause = (fetchErr as any)?.cause?.code ?? 'unknown';
+    console.error(`[callChatStream] fetch 失败: url=${url} model=${opts.model} cause=${cause} message=${(fetchErr as Error).message}`);
+    throw fetchErr;
+  }
 
   if (!res.ok || !res.body) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`AI ${res.status}: ${errText.slice(0, 200)}`);
+    console.error(`[callChatStream] AI 返回错误 (${res.status}): url=${url} model=${opts.model} jsonMode=${useJsonMode} body=${errText.slice(0, 500)}`);
+    // 抛出一个带 status 的错误，方便上层判断是否可重试
+    const err = new Error(`AI 服务调用失败 (HTTP ${res.status})`) as Error & { httpStatus: number };
+    (err as any).httpStatus = res.status;
+    throw err;
   }
+
+  console.log('[callChatStream] 连接成功, 开始流式读取');
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -133,5 +146,33 @@ export async function* callChatStream(opts: CallChatOpts): AsyncGenerator<Stream
     }
   } finally {
     try { reader.cancel(); } catch {}
+  }
+}
+
+/**
+ * 流式调用 OpenAI 兼容 API。
+ * - 部分 OpenAI 兼容服务不支持 jsonMode + stream，会自动回退到无 response_format
+ * - 其他接口行为与 doStreamFetch 一致
+ */
+export async function* callChatStream(opts: CallChatOpts): AsyncGenerator<StreamChunk> {
+  // 首次尝试：按调用方要求（可能带 jsonMode）
+  try {
+    const useJsonMode = opts.jsonMode === true;
+    for await (const chunk of doStreamFetch(opts, useJsonMode)) {
+      yield chunk;
+    }
+    return;
+  } catch (err) {
+    // jsonMode + stream 不兼容时回退重试（仅对 4xx 错误回退，网络错误不回退）
+    const httpStatus = (err as any)?.httpStatus;
+    const isJsonModeError = opts.jsonMode === true && httpStatus != null && httpStatus >= 400 && httpStatus < 500;
+    if (isJsonModeError) {
+      console.log('[callChatStream] jsonMode+stream 失败 (HTTP %d)，回退到无 response_format 重试', httpStatus);
+      for await (const chunk of doStreamFetch(opts, false)) {
+        yield chunk;
+      }
+      return;
+    }
+    throw err;
   }
 }

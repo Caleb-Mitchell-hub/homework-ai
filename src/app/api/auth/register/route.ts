@@ -47,16 +47,31 @@ export async function POST(request: Request) {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const SIGNUP_BONUS = 300;
 
-    const user = await prisma.user.create({
-      data: {
-        username,
-        password: hashedPassword,
-        isGuest: false,
-        securityQuestion: finalSecurityQuestion,
-        securityAnswerHash: hashedAnswer,
-        professionId: professionId || null,
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          username,
+          password: hashedPassword,
+          isGuest: false,
+          credits: SIGNUP_BONUS,
+          securityQuestion: finalSecurityQuestion,
+          securityAnswerHash: hashedAnswer,
+          professionId: professionId || null,
+        },
+      });
+
+      await tx.creditLedger.create({
+        data: {
+          userId: created.id,
+          delta: SIGNUP_BONUS,
+          reason: 'signup',
+          balance: SIGNUP_BONUS,
+        },
+      });
+
+      return created;
     });
 
     return NextResponse.json({

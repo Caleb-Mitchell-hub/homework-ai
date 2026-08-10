@@ -7,8 +7,26 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ token: 'test-token' }),
 }));
 
+vi.mock('@/components/DialogProvider', () => ({
+  useDialog: () => ({
+    alert: vi.fn(),
+    confirm: vi.fn(),
+    prompt: vi.fn(),
+  }),
+}));
+
 const mockStats = {
-  overview: { score: 5, totalScore: 10, correctRate: 0.5, correctCount: 5, wrongCount: 4, unansweredCount: 1 },
+  overview: {
+    score: 5,
+    totalScore: 10,
+    correctRate: 0.5,
+    correctCount: 5,
+    wrongCount: 4,
+    unansweredCount: 1,
+    totalQuestions: 10,
+    objectiveCount: 10,
+    subjectiveCount: 0,
+  },
   byType: { single: { total: 5, correct: 3, correctRate: 0.6 } },
   byDifficulty: { noDifficultyCount: 0 },
 };
@@ -20,7 +38,7 @@ describe('ReportView', () => {
 
   it('无 AI 报告时显示「AI 生成报告」按钮', () => {
     const { container } = render(
-      <ReportView resultId="r1" stats={mockStats} quizTitle="测试" />,
+      <ReportView resultId="r1" stats={mockStats as any} quizTitle="测试" />,
     );
     expect(container.textContent).toContain('AI 生成报告');
   });
@@ -29,7 +47,7 @@ describe('ReportView', () => {
     const { container } = render(
       <ReportView
         resultId="r1"
-        stats={mockStats}
+        stats={mockStats as any}
         quizTitle="测试"
         initialReport={{
           knowledgePoints: [{ tag: '闭包', relatedQuestions: [1] }],
@@ -43,7 +61,7 @@ describe('ReportView', () => {
 
   it('显示总览数据', () => {
     const { container } = render(
-      <ReportView resultId="r1" stats={mockStats} quizTitle="测试" />,
+      <ReportView resultId="r1" stats={mockStats as any} quizTitle="测试" />,
     );
     expect(container.textContent).toContain('5');
     expect(container.textContent).toContain('10');

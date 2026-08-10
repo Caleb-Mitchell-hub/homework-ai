@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { callChat } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
+import { extractJson } from '@/lib/ai/json-extractor';
 import { buildReportPrompt, WrongQuestion } from '@/lib/ai/report-prompt';
 
 export const REPORT_COST = 5;
@@ -99,7 +100,7 @@ export async function generateReport(opts: {
       maxTokens: 2000,
       temperature: 0.5,
     });
-    const parsed = JSON.parse(raw);
+    const parsed = extractJson<{ knowledgePoints?: any[]; advice?: string }>(raw);
     if (
       !parsed ||
       typeof parsed.advice !== 'string' ||
@@ -107,7 +108,7 @@ export async function generateReport(opts: {
     ) {
       throw new Error('AI 返回格式不正确');
     }
-    content = parsed;
+    content = { knowledgePoints: parsed.knowledgePoints, advice: parsed.advice };
   } catch (e) {
     // 5) 失败回滚
     await prisma.$transaction(async (tx) => {

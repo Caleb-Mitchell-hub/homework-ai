@@ -66,9 +66,11 @@ export async function explainQuestion(opts: {
   options?: string[];
   signal?: AbortSignal;
 }): Promise<{ content: string; cached: boolean; newBalance: number; costCredit: number }> {
-  // 1. 缓存查询
+  // 1. 缓存查询 — 按 (userId, questionId, userAnswer) 精确匹配
+  //    userAnswer 不同 = 不同的解析需求，必须重新生成，不能复用旧缓存
+  const userAnswer = opts.userAnswer || '';
   const cached = await prisma.aIExplanation.findFirst({
-    where: { userId: opts.userId, questionId: opts.questionId },
+    where: { userId: opts.userId, questionId: opts.questionId, userAnswer },
     orderBy: { createdAt: 'desc' },
   });
   if (cached) {
@@ -162,11 +164,12 @@ export async function explainQuestion(opts: {
       throw lastErr ?? new Error('AI 返回了空内容,请检查厂商配置或模型是否支持文本输出');
     }
 
-    // 5. 写缓存
+    // 5. 写缓存（含 userAnswer，确保不同答案不会复用缓存）
     await prisma.aIExplanation.create({
       data: {
         userId: opts.userId,
         questionId: opts.questionId,
+        userAnswer,
         costCredit: cost,
         content,
       },

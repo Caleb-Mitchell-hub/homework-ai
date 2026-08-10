@@ -7,6 +7,7 @@ import type { InterviewScoreResult } from '@/lib/ai/grading-prompt';
 import type { InterviewQuestionResult } from '@/lib/ai/interview-report-prompt';
 import { callChat } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
+import { extractJson } from '@/lib/ai/json-extractor';
 
 /**
  * 对单道面试题进行 AI 打分（0-100）。
@@ -30,12 +31,25 @@ async function gradeOnTheFly(q: any, userAnswer: string): Promise<InterviewScore
       baseURL: provider.baseURL,
       apiKey,
       model: provider.model,
-      messages: [{ role: 'system', content: prompt }],
+      messages: [
+        {
+          role: 'system',
+          content:
+            '你是一位资深面试官，请根据学生的回答与参考答案的匹配程度，给出 0-100 分的评分。你的评分需要严格区分不同回答的质量差异，不能对所有题目给出相同或相近的分数。请严格按 JSON 格式输出。',
+        },
+        { role: 'user', content: prompt },
+      ],
       jsonMode: true,
-      maxTokens: 1200,
-      temperature: 0.4,
+      maxTokens: 8000,
+      temperature: 0.8,
     });
-    const parsed = JSON.parse(content);
+    let parsed: { score?: number; strengths?: string[]; weaknesses?: string[]; suggestion?: string; comment?: string };
+    try {
+      parsed = extractJson<{ score?: number; strengths?: string[]; weaknesses?: string[]; suggestion?: string; comment?: string }>(content);
+    } catch {
+      console.error('gradeOnTheFly JSON 解析失败，原始长度:', content.length, '前200字符:', content.slice(0, 200));
+      return null;
+    }
     const score = typeof parsed.score === 'number' ? Math.round(Math.max(0, Math.min(100, parsed.score))) : 0;
     return {
       score,
@@ -195,8 +209,9 @@ export async function POST(request: Request) {
       );
     }
     console.error('生成面试报告错误:', error);
+    const message = error instanceof Error ? error.message : 'AI 报告服务暂时不可用，请稍后重试';
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '服务器错误' },
+      { error: message },
       { status: 500 },
     );
   }

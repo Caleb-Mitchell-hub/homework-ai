@@ -1,9 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { Highlight, themes } from 'prism-react-renderer';
 import { Question, SingleQuestion, MultipleQuestion, BooleanQuestion, FillQuestion, EssayQuestion, CodeQuestion, InterviewQuestion } from '@/types';
 import MarkdownView from '@/components/MarkdownView';
 import AIFollowUp from '@/components/AIFollowUp';
+import AIExplainPanel from '@/components/AIExplainPanel';
+import { useAuth } from '@/contexts/AuthContext';
+import { formatCorrectAnswer } from '@/lib/answer-sheet-helpers';
 
 interface Props {
   question: Question;
@@ -19,6 +23,8 @@ interface Props {
     weaknesses: string[];
     suggestion: string;
   };
+  /** 面试题 AI 综合评语（Markdown 格式） */
+  comment?: string;
 }
 
 const typeColors: Record<Question['type'], { bg: string; text: string; border: string }> = {
@@ -41,8 +47,11 @@ const typeLabels: Record<Question['type'], string> = {
   interview: '面试题'
 };
 
-export default function QuestionCard({ question, index, userAnswer, onChange, showResult, interviewScore, interviewFeedback }: Props) {
+export default function QuestionCard({ question, index, userAnswer, onChange, showResult, interviewScore, interviewFeedback, comment }: Props) {
   const colors = typeColors[question.type];
+  const { token, user } = useAuth();
+  const [explainContent, setExplainContent] = useState('');
+  const [explainKey, setExplainKey] = useState(0); // 用于重置 AIExplainPanel 状态
 
   const renderInput = () => {
     switch (question.type) {
@@ -394,7 +403,15 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
               {interviewFeedback?.suggestion && (
                 <div className="mt-2">
                   <span className="text-sm text-blue-600 font-medium">💡 改进建议：</span>
-                  <p className="mt-1 text-sm text-slate-700">{interviewFeedback.suggestion}</p>
+                  <div className="mt-1 text-sm text-slate-700">
+                    <MarkdownView content={interviewFeedback.suggestion} size="sm" />
+                  </div>
+                </div>
+              )}
+              {/* 综合评语 */}
+              {comment && (
+                <div className="mt-2 pt-2 border-t border-indigo-100">
+                  <MarkdownView content={comment} size="sm" />
                 </div>
               )}
             </div>
@@ -427,6 +444,28 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
         </div>
       )}
 
+      {/* AI 解析 — 所有题型在查看答案时都可用 */}
+      {showResult && token && (
+        <div className="mt-4 pt-3 border-t border-slate-100">
+          <AIExplainPanel
+            key={`${question.id}-${explainKey}`}
+            questionId={question.id}
+            questionContent={question.title}
+            questionType={question.type}
+            userAnswer={userAnswer}
+            correctAnswer={formatCorrectAnswer(question)}
+            options={(question as any).options}
+            onNeedCredits={(req, bal) => {
+              alert(`积分不足：需要 ${req} 积分，当前 ${bal} 积分。请前往 /credits 充值`);
+              window.location.href = '/credits';
+            }}
+            onDone={(content) => {
+              setExplainContent(content);
+            }}
+          />
+        </div>
+      )}
+
       {/* 追问入口 — 仅在显示答案时出现 */}
       {showResult && (
         <div className="mt-4 pt-3 border-t border-slate-100">
@@ -434,6 +473,10 @@ export default function QuestionCard({ question, index, userAnswer, onChange, sh
             questionId={question.id}
             questionContent={question.title}
             questionType={question.type}
+            answer={question.type === 'essay' || question.type === 'interview'
+              ? (question as any).referenceAnswer
+              : String(question.answer)}
+            aiExplanation={explainContent}
           />
         </div>
       )}

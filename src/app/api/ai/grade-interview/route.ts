@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { buildInterviewGradingPrompt } from '@/lib/ai/grading-prompt';
 import { callChat } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
+import { extractJson } from '@/lib/ai/json-extractor';
 
 /** POST /api/ai/grade-interview — 对单道面试题进行 AI 打分（0-100），并回写结果 */
 export async function POST(request: Request) {
@@ -65,17 +66,33 @@ export async function POST(request: Request) {
     });
 
     const apiKey = decryptApiKey(provider.apiKeyCipher);
+    // 使用 system + user 分离结构，让 AI 更好地针对每道题给出差异化评分
+    // temperature 提高到 0.8，避免低温度导致不同题目得分趋同
     const content = await callChat({
       baseURL: provider.baseURL,
       apiKey,
       model: provider.model,
-      messages: [{ role: 'system', content: prompt }],
+      messages: [
+        {
+          role: 'system',
+          content:
+            '你是一位资深面试官，请根据学生的回答与参考答案的匹配程度，给出 0-100 分的评分。你的评分需要严格区分不同回答的质量差异，不能对所有题目给出相同或相近的分数。请严格按 JSON 格式输出。',
+        },
+        { role: 'user', content: prompt },
+      ],
       jsonMode: true,
-      maxTokens: 1200,
-      temperature: 0.4,
+      maxTokens: 3000,
+      temperature: 0.8,
     });
 
-    const parsed = JSON.parse(content);
+    let parsed: { score?: number; strengths?: string[]; weaknesses?: string[]; suggestion?: string; comment?: string };
+    try {
+      parsed = extractJson<{ score?: number; strengths?: string[]; weaknesses?: string[]; suggestion?: string; comment?: string }>(content);
+    } catch (jsonErr) {
+      console.error('AI 评分 JSON 解析失败，原始长度:', content.length);
+      // 降级：尝试用默认值兜底，避免整个评分流程中断
+      parsed = { score: 0, strengths: [], weaknesses: ['AI 返回格式异常，请手动评分'], suggestion: '', comment: '' };
+    }
     const score = typeof parsed.score === 'number'
       ? Math.round(Math.max(0, Math.min(100, parsed.score)))
       : 0;
@@ -101,7 +118,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('单题面试评分错误:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'AI 评分失败' },
+      { error: 'AI 评分服务暂时不可用，请稍后重试' },
       { status: 500 },
     );
   }

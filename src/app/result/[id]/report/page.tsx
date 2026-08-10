@@ -25,68 +25,67 @@ export default function ReportPage() {
     let cancelled = false;
     (async () => {
       try {
-        // 1) 查所有结果，找到目标
-        const resultsRes = await fetch('/api/results', {
+        // 1) 使用详情 API 获取完整数据（含 results 数组 + quiz.questions）
+        const detailRes = await fetch(`/api/results/${resultId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!resultsRes.ok) throw new Error('无法加载结果');
-        const all = await resultsRes.json();
-        const found = (all.results ?? []).find((r: any) => r.id === resultId);
-        if (!found) throw new Error('结果不存在');
-        // 2) 防御性 parse results
-        if (typeof found.results === 'string') {
-          try {
-            found.results = JSON.parse(found.results);
-          } catch {
-            found.results = [];
-          }
+        if (!detailRes.ok) {
+          const err = await detailRes.json().catch(() => ({}));
+          throw new Error(err.error || '无法加载结果');
         }
-        // 3) 查 quiz
-        const quizRes = await fetch(`/api/quizzes/${found.quizId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!quizRes.ok) throw new Error('无法加载题目');
-        const quizData = await quizRes.json();
-        const questions = quizData.quiz?.questions ?? [];
+        const detailData = await detailRes.json();
+        const found = detailData.result;
+        if (!found) throw new Error('结果不存在');
+
+        // 2) 防御性 parse results
+        let parsedResults: any[] = [];
+        if (typeof found.results === 'string') {
+          try { parsedResults = JSON.parse(found.results); } catch { /* keep [] */ }
+        } else if (Array.isArray(found.results)) {
+          parsedResults = found.results;
+        }
+
+        // 3) 防御性 parse questions（已通过 include quiz.questions 返回）
+        let questions: any[] = [];
+        try {
+          const rawQuestions = found.quiz?.questions;
+          if (typeof rawQuestions === 'string') {
+            questions = JSON.parse(rawQuestions);
+          } else if (Array.isArray(rawQuestions)) {
+            questions = rawQuestions;
+          }
+        } catch { /* keep [] */ }
 
         // 4) 判断是否为面试题型（全部题目都是 interview 或 essay 类型）
         const isInterview = questions.length > 0 && questions.every((q: any) => q.type === 'interview' || q.type === 'essay');
 
-        // 5) 计算本地统计
+        // 5) 计算本地统计（区分客观题与主观题）
         const stats = calcReportStats({
           totalScore: found.score,
-          results: found.results ?? [],
+          maxTotalScore: found.totalScore,
+          results: parsedResults,
           questions,
         });
 
-        // 6) 尝试加载缓存报告
+        // 6) 尝试加载缓存报告（仅查询缓存，不触发 AI 生成和扣积分）
         let initialReport: any = undefined;
-        if (!isInterview) {
-          // 普通题型：尝试加载缓存的 AI 报告
-          try {
-            const reportRes = await fetch('/api/ai/report', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({ resultId }),
-            });
-            if (reportRes.ok) {
-              const reportData = await reportRes.json();
-              if (reportData.cached && reportData.content) {
-                initialReport = reportData.content;
-              }
+        try {
+          const cacheRes = await fetch(`/api/ai/report?resultId=${encodeURIComponent(resultId)}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (cacheRes.ok) {
+            const cacheData = await cacheRes.json();
+            if (cacheData.cached && cacheData.content) {
+              initialReport = cacheData.content;
             }
-          } catch {
-            // 静默忽略
           }
+        } catch {
+          // 静默忽略
         }
-        // 面试题报告不做缓存预加载
 
         if (!cancelled) {
           setData({
-            quizTitle: quizData.quiz?.title ?? '',
+            quizTitle: found.quiz?.title ?? '',
             stats,
             initialReport,
             isInterview,

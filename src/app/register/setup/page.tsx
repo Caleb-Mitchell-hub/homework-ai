@@ -7,7 +7,7 @@ import { PREDEFINED_QUESTIONS } from '@/lib/securityQuestions';
 
 export default function SetupPage() {
   const router = useRouter();
-  const { user, token, loading } = useAuth();
+  const { user, token, loading, updateUser } = useAuth();
   const [securityQuestion, setSecurityQuestion] = useState(PREDEFINED_QUESTIONS[0].key);
   const [securityAnswer, setSecurityAnswer] = useState('');
   const [professionId, setProfessionId] = useState('');
@@ -61,6 +61,8 @@ export default function SetupPage() {
         setError(data.error || '设置失败');
         return;
       }
+      // 同步更新 AuthContext 中的 user.professionId，避免首页再次提示选择职业
+      updateUser({ professionId: professionId || null });
       router.push('/welcome');
     } catch {
       setError('网络错误');
@@ -80,7 +82,13 @@ export default function SetupPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ professionId }),
-      }).finally(() => router.push('/welcome'));
+      })
+        .then(() => {
+          // 同步更新 AuthContext，避免首页再次提示选择职业
+          updateUser({ professionId });
+          router.push('/welcome');
+        })
+        .catch(() => router.push('/welcome'));
     } else {
       router.push('/welcome');
     }

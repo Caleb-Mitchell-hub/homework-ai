@@ -43,8 +43,29 @@ export default function AdminAIList() {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();
-    if (data.ok) alert(`✓ 连接成功 · ${data.latencyMs}ms · ${data.model}`);
-    else alert(`✗ 失败 · ${data.error}`);
+    if (data.ok) {
+      const parts = [
+        `✓ 连接成功`,
+        `Ping: ${data.results?.ping?.latencyMs ?? '?'}ms`,
+        `Stream: ${data.results?.stream?.latencyMs ?? '?'}ms`,
+        data.results?.jsonMode
+          ? `JSON模式: ${data.results.jsonMode.latencyMs}ms`
+          : 'JSON模式: 不支持',
+        `模型: ${data.model}`,
+      ];
+      if (data.warnings?.length) {
+        parts.push(`\n⚠ ${data.warnings.join('\n')}`);
+      }
+      alert(parts.join(' · '));
+    } else {
+      const errParts = [`✗ 失败`];
+      if (data.results?.ping?.error) errParts.push(`Ping: ${data.results.ping.error}`);
+      if (data.results?.stream?.error) errParts.push(`Stream: ${data.results.stream.error}`);
+      if (!data.results?.ping?.error && !data.results?.stream?.error && data.error) {
+        errParts.push(data.error);
+      }
+      alert(errParts.join('\n'));
+    }
   };
 
   const onActivate = async (id: string) => {
