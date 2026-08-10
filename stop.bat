@@ -1,58 +1,58 @@
 @echo off
-chcp 65001 >nul
-title 停止 Homework AI
+chcp 936 >nul
+title Stop Homework AI
 
 echo.
-echo   ╔══════════════════════════════════════╗
-echo   ║   🛑 停止 Homework AI 服务           ║
-echo   ╚══════════════════════════════════════╝
+echo   ======================================
+echo     Stop Homework AI Service
+echo   ======================================
 echo.
 
 set FOUND=0
 
-rem ── 停止端口 3000（开发环境）──
+rem --- Stop port 3000 (Dev) ---
 set CHECK_PORT=3000
-echo   [开发环境] 检查端口 %CHECK_PORT%...
+echo   [Dev] Checking port %CHECK_PORT%...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R /C:":%CHECK_PORT% " ^| findstr "LISTENING"') do (
     set PID=%%a
     set FOUND=1
-    echo   找到进程 PID: %%a
+    echo   Found PID: %%a
     taskkill /PID %%a /F >nul 2>&1
     if errorlevel 1 (
-        echo   ✗ 无法终止
+        echo   X Failed to kill
     ) else (
-        echo   ✓ 已终止
+        echo   V Killed
     )
 )
-if "%PID%"=="" echo   ⚠ 端口 %CHECK_PORT% 未被占用
+if "%PID%"=="" echo   ! Port %CHECK_PORT% not in use
 echo.
 set PID=
 
-rem ── 停止端口 3001（生产环境）──
+rem --- Stop port 3001 (Prod) ---
 set CHECK_PORT=3001
-echo   [生产环境] 检查端口 %CHECK_PORT%...
+echo   [Prod] Checking port %CHECK_PORT%...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R /C:":%CHECK_PORT% " ^| findstr "LISTENING"') do (
     set PID=%%a
     set FOUND=1
-    echo   找到进程 PID: %%a
+    echo   Found PID: %%a
     taskkill /PID %%a /F >nul 2>&1
     if errorlevel 1 (
-        echo   ✗ 无法终止
+        echo   X Failed to kill
     ) else (
-        echo   ✓ 已终止
+        echo   V Killed
     )
 )
-if "%PID%"=="" echo   ⚠ 端口 %CHECK_PORT% 未被占用
+if "%PID%"=="" echo   ! Port %CHECK_PORT% not in use
 echo.
 
 if %FOUND%==0 (
-    echo   ⚠ 未找到运行中的服务（端口 3000 / 3001）
+    echo   ! No service found on port 3000 or 3001
     echo.
 )
 
-echo   ─────────────────────────────────────
-echo   服务已停止，可以关闭此窗口
-echo   ─────────────────────────────────────
+echo   --------------------------------------
+echo   Service stopped. You may close this window.
+echo   --------------------------------------
 echo.
 timeout /t 3 /nobreak >nul
 exit /b 0
