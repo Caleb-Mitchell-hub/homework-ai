@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { PREDEFINED_QUESTIONS } from '@/lib/securityQuestions';
+import { getClientIP, recordLoginLog } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
     const { username, password, securityQuestion, securityAnswer, professionId } = await request.json();
+    const ip = getClientIP(request);
+    const userAgent = request.headers.get('user-agent');
 
     if (!username || !password) {
       return NextResponse.json({ error: '用户名和密码不能为空' }, { status: 400 });
@@ -73,6 +76,9 @@ export async function POST(request: Request) {
 
       return created;
     });
+
+    // 记录注册登录日志
+    await recordLoginLog(user.id, ip, userAgent, true);
 
     return NextResponse.json({
       id: user.id,

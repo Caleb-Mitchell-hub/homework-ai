@@ -30,6 +30,11 @@ export async function GET(request: Request) {
         include: {
           admin: { select: { id: true } },
           _count: { select: { quizzes: true, results: true } },
+          loginLogs: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { ip: true, createdAt: true, success: true },
+          },
         },
         orderBy: { createdAt: 'desc' },
         take: limit,
@@ -49,6 +54,8 @@ export async function GET(request: Request) {
         createdAt: u.createdAt,
         quizCount: u._count.quizzes,
         resultCount: u._count.results,
+        lastLoginIp: u.loginLogs[0]?.ip ?? null,
+        lastLoginAt: u.loginLogs[0]?.createdAt ?? null,
       })),
       total,
     });

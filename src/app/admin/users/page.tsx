@@ -17,6 +17,16 @@ interface AdminUser {
   createdAt: string;
   quizCount: number;
   resultCount: number;
+  lastLoginIp: string | null;
+  lastLoginAt: string | null;
+}
+
+interface LoginLogEntry {
+  id: string;
+  ip: string | null;
+  userAgent: string | null;
+  success: boolean;
+  createdAt: string;
 }
 
 type FilterType = 'all' | 'registered' | 'guest';
@@ -34,6 +44,9 @@ export default function AdminUsersPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [loginLogsUserId, setLoginLogsUserId] = useState<string | null>(null);
+  const [loginLogs, setLoginLogs] = useState<LoginLogEntry[]>([]);
+  const [loginLogsLoading, setLoginLogsLoading] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -71,6 +84,24 @@ export default function AdminUsersPage() {
     if (!admin) return;
     fetchUsers();
   }, [admin, fetchUsers]);
+
+  const fetchLoginLogs = async (userId: string) => {
+    setLoginLogsUserId(userId);
+    setLoginLogsLoading(true);
+    setLoginLogs([]);
+    const token = localStorage.getItem('adminToken');
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/login-logs`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) setLoginLogs(data.logs || []);
+    } catch {
+      showToast('加载登录日志失败');
+    } finally {
+      setLoginLogsLoading(false);
+    }
+  };
 
   const handleDisableToggle = async (user: AdminUser) => {
     if (user.isAdmin) {
@@ -239,6 +270,7 @@ export default function AdminUsersPage() {
                       <th className="text-left px-5 py-3 font-medium">题库</th>
                       <th className="text-left px-5 py-3 font-medium">答题</th>
                       <th className="text-left px-5 py-3 font-medium">最近活跃</th>
+                      <th className="text-left px-5 py-3 font-medium">最近登录IP</th>
                       <th className="text-left px-5 py-3 font-medium">注册时间</th>
                       <th className="text-right px-5 py-3 font-medium">操作</th>
                     </tr>
@@ -293,6 +325,24 @@ export default function AdminUsersPage() {
                           </td>
                           <td className="px-5 py-3.5 text-slate-400 text-[12px]">
                             {u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString('zh-CN', { hour12: false }) : '—'}
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-600 text-[12px]">
+                            {u.lastLoginIp ? (
+                              <button
+                                onClick={() => fetchLoginLogs(u.id)}
+                                className="text-indigo-500 hover:text-indigo-700 hover:underline cursor-pointer"
+                                title="点击查看登录历史"
+                              >
+                                {u.lastLoginIp}
+                                {u.lastLoginAt && (
+                                  <span className="block text-[10px] text-slate-400">
+                                    {new Date(u.lastLoginAt).toLocaleString('zh-CN', { hour12: false })}
+                                  </span>
+                                )}
+                              </button>
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
                           </td>
                           <td className="px-5 py-3.5 text-slate-400 text-[12px]">
                             {new Date(u.createdAt).toLocaleDateString('zh-CN')}
@@ -377,6 +427,83 @@ export default function AdminUsersPage() {
                 {busyId === resettingId ? '处理中...' : '确认重置'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 登录历史弹窗 */}
+      {loginLogsUserId && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setLoginLogsUserId(null)}
+        >
+          <div
+            className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-2xl mx-4 shadow-2xl max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-slate-800 text-lg font-bold">登录历史</h3>
+                <p className="text-slate-500 text-sm">
+                  用户「{users.find((u) => u.id === loginLogsUserId)?.username}」的最近登录记录
+                </p>
+              </div>
+              <button
+                onClick={() => setLoginLogsUserId(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {loginLogsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin w-6 h-6 border-3 border-indigo-400 border-t-transparent rounded-full" />
+              </div>
+            ) : loginLogs.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">暂无登录记录</div>
+            ) : (
+              <div className="overflow-y-auto flex-1">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200/60 bg-slate-50/50 text-slate-500 text-[12px] uppercase tracking-wider sticky top-0">
+                      <th className="text-left px-4 py-2.5 font-medium">时间</th>
+                      <th className="text-left px-4 py-2.5 font-medium">IP 地址</th>
+                      <th className="text-left px-4 py-2.5 font-medium">设备信息</th>
+                      <th className="text-center px-4 py-2.5 font-medium">结果</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loginLogs.map((log) => (
+                      <tr key={log.id} className="border-b border-slate-100/60 hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-3 text-slate-600 text-[13px] whitespace-nowrap">
+                          {new Date(log.createdAt).toLocaleString('zh-CN', { hour12: false })}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 text-[13px] font-mono">
+                          {log.ip || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 text-[11px] max-w-[300px] truncate" title={log.userAgent || undefined}>
+                          {log.userAgent || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {log.success ? (
+                            <span className="px-2 py-0.5 rounded-full text-[11px] bg-emerald-50 text-emerald-600 font-medium">
+                              成功
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[11px] bg-rose-50 text-rose-600 font-medium">
+                              失败
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

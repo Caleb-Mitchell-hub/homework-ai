@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { generateToken } from '@/lib/auth';
+import { generateToken, getClientIP, recordLoginLog } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
     const { professionId } = await request.json().catch(() => ({}));
+    const ip = getClientIP(request);
+    const userAgent = request.headers.get('user-agent');
     const guestId = 'guest_' + Date.now();
     const guestUsername = '游客_' + Math.random().toString(36).substring(2, 8);
 
@@ -17,6 +19,9 @@ export async function POST(request: Request) {
         professionId: professionId || null,
       },
     });
+
+    // 记录游客登录日志
+    await recordLoginLog(user.id, ip, userAgent, true);
 
     const token = generateToken({
       userId: user.id,

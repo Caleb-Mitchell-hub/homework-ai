@@ -37,6 +37,7 @@ model User {
   reports            AIReport[]
   quizCategories     QuizCategory[]
   notes              Note[]
+  loginLogs          LoginLog[]
 }
 
 model Admin {
@@ -257,6 +258,22 @@ model Note {
   @@index([userId, quizId])
   @@index([userId, questionId])
   @@index([userId, resultId])
+}
+
+/// 用户登录日志（记录 IP、设备信息，用于管理后台审计）
+model LoginLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 客户端 IP 地址
+  ip        String?
+  /// 浏览器 User-Agent
+  userAgent String?
+  /// 登录是否成功
+  success   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 /// 答题记录自定义分类（替代 localStorage，跨设备同步）
