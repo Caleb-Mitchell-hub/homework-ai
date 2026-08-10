@@ -1,16 +1,13 @@
 /**
- * 题库预设分类(服务端硬编码,所有用户共享)。
- *
- * 设计:不存数据库表,而是用代码常量的方式。原因:
- *  1. 预设分类很少(7 个左右),变更频率低
- *  2. 改文案 / 加项需要发版,这是有意的(防止运营乱改)
- *  3. 客户端不需要单独请求就能拿到,可以塞进 layout 初始化
+ * 题库预设分类（管理员可在后台管理，数据库存储 + 内存缓存）。
  *
  * id 前缀规范:
  *  - "preset:<key>"   系统预设
  *  - "user:<id>"      用户私有(localStorage,后端不感知)
  *  - null / undefined  未分类
  */
+
+import { prisma } from './prisma';
 
 export interface PresetCategory {
   key: string;          // 用于 "preset:<key>"
@@ -29,6 +26,37 @@ export const PRESET_CATEGORIES: PresetCategory[] = [
   { key: 'backend',  text: '后端',  emoji: '🛠️' },
   { key: 'other',    text: '其他',  emoji: '📚' },
 ];
+
+/** 从数据库加载预置分类到 PRESET_CATEGORIES（原地替换数组内容，保持引用不变）。仅在服务端调用。 */
+export async function loadPresetCategories(): Promise<void> {
+  try {
+    let rows = await prisma.presetQuizCategory.findMany({ orderBy: { order: 'asc' } });
+    if (rows.length === 0) {
+      // 首次迁移：将默认值写入数据库
+      await prisma.presetQuizCategory.createMany({
+        data: PRESET_CATEGORIES.map((c, i) => ({
+          key: c.key,
+          text: c.text,
+          emoji: c.emoji ?? '',
+          order: i,
+        })),
+      });
+      rows = await prisma.presetQuizCategory.findMany({ orderBy: { order: 'asc' } });
+    }
+    // 原地替换数组内容
+    PRESET_CATEGORIES.length = 0;
+    for (const r of rows) {
+      PRESET_CATEGORIES.push({ key: r.key, text: r.text, emoji: r.emoji ?? '' });
+    }
+  } catch (err) {
+    console.error('加载预置分类失败，使用默认值:', err);
+  }
+}
+
+/** 管理端增删改后调用，刷新内存中的 PRESET_CATEGORIES */
+export async function refreshPresetCategories(): Promise<void> {
+  await loadPresetCategories();
+}
 
 const KEY_TO_TEXT: Record<string, string> = Object.fromEntries(
   PRESET_CATEGORIES.map((c) => [c.key, c.text])
