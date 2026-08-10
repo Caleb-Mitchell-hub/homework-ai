@@ -152,27 +152,49 @@ async function* doStreamFetch(opts: CallChatOpts, useJsonMode: boolean): AsyncGe
 /**
  * 流式调用 OpenAI 兼容 API。
  * - 部分 OpenAI 兼容服务不支持 jsonMode + stream，会自动回退到无 response_format
+ * - 5xx、429 限流、网络错误自动重试 1 次
  * - 其他接口行为与 doStreamFetch 一致
  */
 export async function* callChatStream(opts: CallChatOpts): AsyncGenerator<StreamChunk> {
-  // 首次尝试：按调用方要求（可能带 jsonMode）
-  try {
-    const useJsonMode = opts.jsonMode === true;
-    for await (const chunk of doStreamFetch(opts, useJsonMode)) {
-      yield chunk;
-    }
-    return;
-  } catch (err) {
-    // jsonMode + stream 不兼容时回退重试（仅对 4xx 错误回退，网络错误不回退）
-    const httpStatus = (err as any)?.httpStatus;
-    const isJsonModeError = opts.jsonMode === true && httpStatus != null && httpStatus >= 400 && httpStatus < 500;
-    if (isJsonModeError) {
-      console.log('[callChatStream] jsonMode+stream 失败 (HTTP %d)，回退到无 response_format 重试', httpStatus);
-      for await (const chunk of doStreamFetch(opts, false)) {
+  let lastError: unknown;
+  const maxAttempts = 2; // 首次 + 1 次重试
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const useJsonMode = opts.jsonMode === true;
+      for await (const chunk of doStreamFetch(opts, useJsonMode)) {
         yield chunk;
       }
-      return;
+      return; // 成功，退出
+    } catch (err) {
+      lastError = err;
+      const httpStatus = (err as any)?.httpStatus;
+
+      // jsonMode + stream 不兼容 → 回退到无 response_format（不限重试次数，立即切换）
+      const isJsonModeError = opts.jsonMode === true && httpStatus != null && httpStatus >= 400 && httpStatus < 500;
+      if (isJsonModeError) {
+        console.log('[callChatStream] jsonMode+stream 失败 (HTTP %d)，回退到无 response_format 重试', httpStatus);
+        opts.jsonMode = false; // 切换到非 jsonMode，下次循环用新参数
+        continue;
+      }
+
+      // 5xx、429 限流、网络错误（无 httpStatus）→ 重试 1 次
+      const isRetryable =
+        httpStatus == null || // 网络错误（连接重置、DNS 失败等）
+        httpStatus === 429 || // 限流
+        httpStatus >= 500;    // 服务端错误
+      if (isRetryable && attempt < maxAttempts - 1) {
+        const reason = httpStatus == null ? '网络错误' : `HTTP ${httpStatus}`;
+        console.log('[callChatStream] %s，第 %d 次重试…', reason, attempt + 1);
+        // 等待一小段时间再重试（429 多等一会）
+        await new Promise((r) => setTimeout(r, httpStatus === 429 ? 3000 : 800));
+        continue;
+      }
+
+      throw err;
     }
-    throw err;
   }
+
+  // 理论上不会到这里（循环内要么 return 要么 throw），但安全兜底
+  throw lastError;
 }

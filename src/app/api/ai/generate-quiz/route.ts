@@ -195,7 +195,8 @@ export async function POST(req: NextRequest) {
 
         console.log('[generate-quiz] 开始调用 AI…');
 
-        // 流式调用 AI
+        // 流式调用 AI（不开启 jsonMode，让模型自由输出。
+        // extractJson 有 5 种回退策略，能处理 markdown 代码块、截断、引号等问题）
         const generator = callChatStream({
           baseURL: provider.baseURL,
           apiKey,
@@ -204,8 +205,8 @@ export async function POST(req: NextRequest) {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          jsonMode: true,
-          maxTokens: 16000,
+          jsonMode: false,
+          maxTokens: 8192,
           temperature: 0.7,
           signal: combinedSignal,
         });
@@ -300,7 +301,14 @@ export async function POST(req: NextRequest) {
         });
       } catch (err) {
         if (err instanceof Error && err.message === 'aborted') {
-          console.log('[generate-quiz] 客户端断开或超时');
+          console.log('[generate-quiz] 客户端断开或超时，已接收 %d 字符', fullContent.length);
+          // 超时/断开也退款（用户未拿到完整结果）
+          try {
+            await adjustForGenerate(payload.userId, estimatedCost);
+            console.log('[generate-quiz] 已退款 %d 积分（超时/断开）', estimatedCost);
+          } catch (refundErr) {
+            console.error('[generate-quiz] 退款失败:', refundErr);
+          }
         } else {
           const errorMsg = err instanceof Error ? err.message : String(err);
           console.error('[generate-quiz] 生成失败:', errorMsg, 'provider:', provider.baseURL);
