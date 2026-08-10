@@ -41,6 +41,16 @@ const NAV_ITEMS = [
     ),
   },
   {
+    key: 'categories',
+    label: '分类管理',
+    path: '/admin/categories',
+    icon: (
+      <svg className="w-[15px] h-[15px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M7 7h-1a2 2 0 00-2 2v9a2 2 0 002 2h9a2 2 0 002-2v-1m-2.5-9.5a2.121 2.121 0 013 3L13 15l-4 1 1-4 5.5-5.5z" />
+      </svg>
+    ),
+  },
+  {
     key: 'quizzes-new',
     label: '发布新题库',
     path: '/admin/quizzes/new',
