@@ -58,7 +58,7 @@ export async function PUT(
 
   try {
     const { id } = await params;
-    let { title, questions } = await request.json();
+    let { title, questions, categoryId } = await request.json();
 
     // 全部 essay → 自动转换为 interview
     questions = autoConvertEssayToInterview(questions);
@@ -68,6 +68,7 @@ export async function PUT(
       data: {
         title,
         questions: JSON.stringify(questions),
+        categoryId: categoryId ?? null,
       },
     });
 

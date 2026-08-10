@@ -1,17 +1,42 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import AdminSidebar from '@/components/AdminSidebar';
 import QuizUploadPanel, { type ParsedQuestion } from '@/components/admin/QuizUploadPanel';
+import AIGenerateForm from '@/components/AIGenerateForm';
+import AIGenerateDialog from '@/components/AIGenerateDialog';
+import AIGeneratePreview from '@/components/AIGeneratePreview';
+import {
+  buildGenerateSystemPrompt,
+  buildGenerateUserPrompt,
+} from '@/lib/ai/generate-prompt';
+import type { Question } from '@/types';
+
+type Tab = 'upload' | 'ai';
 
 export default function NewQuizPage() {
   const router = useRouter();
   const { admin, loading: adminLoading } = useAdminAuth();
+
+  const [tab, setTab] = useState<Tab>('upload');
   const [timeLimit, setTimeLimit] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // AI 生成状态
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState('');
+  const [genQuestions, setGenQuestions] = useState<Question[]>([]);
+  const [genTopic, setGenTopic] = useState('');
+  const [genCounts, setGenCounts] = useState<Record<string, number>>({});
+
+  // 缓存最后一次 topic/counts 用于重新生成
+  const lastRequestRef = useRef<{
+    topic: string;
+    counts: Record<string, number>;
+  }>({ topic: '', counts: {} });
 
   useEffect(() => {
     if (adminLoading) return;
@@ -20,6 +45,148 @@ export default function NewQuizPage() {
       window.location.href = '/admin/login';
     }
   }, [admin, adminLoading]);
+
+  // ---- AI handlers ----
+
+  const handleGenerate = useCallback(
+    (topic: string, counts: Record<string, number>) => {
+      setGenError('');
+      setGenQuestions([]);
+      setGenTopic(topic);
+      setGenCounts(counts);
+      lastRequestRef.current = { topic, counts };
+      setGenerating(true);
+    },
+    [],
+  );
+
+  const handleGenerateComplete = useCallback(
+    (questions: any[], _usage?: any) => {
+      setGenerating(false);
+      setGenQuestions(questions);
+    },
+    [],
+  );
+
+  const handleGenerateError = useCallback((msg: string) => {
+    setGenerating(false);
+    setGenError(msg);
+  }, []);
+
+  const handleCancelGenerate = useCallback(() => {
+    setGenerating(false);
+    setGenError('');
+  }, []);
+
+  const handleRegenerate = useCallback(() => {
+    setGenQuestions([]);
+    setGenError('');
+    const { topic, counts } = lastRequestRef.current;
+    if (topic && Object.values(counts).some((v) => v > 0)) {
+      setGenerating(true);
+    }
+  }, []);
+
+  // 保存 AI 生成的题库
+  const handleSaveAIQuestions = useCallback(async () => {
+    if (genQuestions.length === 0) return;
+    setSaving(true);
+    setGenError('');
+    const token = localStorage.getItem('adminToken');
+    try {
+      const title = genTopic.trim().slice(0, 100) || 'AI 生成题库';
+      const res = await fetch('/api/admin/quizzes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title,
+          questions: genQuestions,
+          isOfficial: true,
+          timeLimit,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setGenError(data.error || '保存失败');
+        return;
+      }
+      router.push('/admin/quizzes');
+    } catch {
+      setGenError('网络错误');
+    } finally {
+      setSaving(false);
+    }
+  }, [genQuestions, genTopic, timeLimit, router]);
+
+  const handleCopyPrompt = useCallback(
+    async (topic: string, counts: Record<string, number>) => {
+      const systemPrompt = buildGenerateSystemPrompt();
+      const userPrompt = buildGenerateUserPrompt(topic, counts);
+      const fullText = systemPrompt + '\n\n' + userPrompt;
+      try {
+        await navigator.clipboard.writeText(fullText);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = fullText;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    },
+    [],
+  );
+
+  const handleCopyPromptFromPreview = useCallback(() => {
+    const { topic, counts } = lastRequestRef.current;
+    if (topic && Object.values(counts).some((v) => v > 0)) {
+      handleCopyPrompt(topic, counts);
+    }
+  }, [handleCopyPrompt]);
+
+  // ---- Upload handler ----
+  const handleUploadParsed = useCallback(
+    async (parsedTitle: string, parsedQuestions: ParsedQuestion[]) => {
+      setError('');
+      if (!parsedTitle.trim()) {
+        setError('未能从文件中提取到标题');
+        return;
+      }
+      setSaving(true);
+      const token = localStorage.getItem('adminToken');
+      try {
+        const res = await fetch('/api/admin/quizzes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            title: parsedTitle.trim(),
+            questions: parsedQuestions,
+            isOfficial: true,
+            timeLimit,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || '创建失败');
+          return;
+        }
+        router.push('/admin/quizzes');
+      } catch {
+        setError('网络错误');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [timeLimit, router],
+  );
 
   if (adminLoading || !admin) {
     return (
@@ -45,7 +212,33 @@ export default function NewQuizPage() {
               >
                 发布新题库
               </h2>
-              <p className="text-slate-500 text-sm">上传 Markdown 文件创建一份新的官方题库，所有用户都能看到</p>
+              <p className="text-slate-500 text-sm">上传 Markdown 文件或使用 AI 生成题库</p>
+            </div>
+          </div>
+
+          {/* Tab switcher */}
+          <div className="flex justify-center mb-6">
+            <div className="inline-flex bg-white/80 border border-slate-200 rounded-xl p-1 gap-1">
+              <button
+                onClick={() => setTab('upload')}
+                className={`px-5 py-2 text-[13px] rounded-lg transition-all ${
+                  tab === 'upload'
+                    ? 'bg-gradient-to-r from-indigo-400 to-pink-400 text-white shadow-md shadow-indigo-200'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                📤 上传题库
+              </button>
+              <button
+                onClick={() => setTab('ai')}
+                className={`px-5 py-2 text-[13px] rounded-lg transition-all ${
+                  tab === 'ai'
+                    ? 'bg-gradient-to-r from-indigo-400 to-pink-400 text-white shadow-md shadow-indigo-200'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                ✨ AI 生成
+              </button>
             </div>
           </div>
 
@@ -55,6 +248,7 @@ export default function NewQuizPage() {
             </div>
           )}
 
+          {/* 答题时长设置（两个 tab 共享） */}
           <div className="bg-white/80 border border-slate-200/60 rounded-2xl p-6 mb-6 shadow-sm">
             <label className="block text-slate-700 text-sm mb-2 font-medium">答题时长</label>
             <div className="flex items-center gap-2">
@@ -84,48 +278,66 @@ export default function NewQuizPage() {
             </div>
           </div>
 
-          <div className="bg-white/80 border border-slate-200/60 rounded-2xl p-6 mb-6 shadow-sm">
-            <QuizUploadPanel
-              tone="admin"
-              busy={saving}
-              onParsed={async (parsedTitle, parsedQuestions: ParsedQuestion[]) => {
-                setError('');
-                if (!parsedTitle.trim()) {
-                  setError('未能从文件中提取到标题');
-                  return;
-                }
-                setSaving(true);
-                const token = localStorage.getItem('adminToken');
-                try {
-                  const res = await fetch('/api/admin/quizzes', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                      title: parsedTitle.trim(),
-                      questions: parsedQuestions,
-                      isOfficial: true,
-                      timeLimit,
-                    }),
-                  });
-                  const data = await res.json();
-                  if (!res.ok) {
-                    setError(data.error || '创建失败');
-                    return;
-                  }
-                  router.push('/admin/quizzes');
-                } catch {
-                  setError('网络错误');
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            />
-          </div>
+          {/* Upload tab */}
+          {tab === 'upload' && (
+            <div className="bg-white/80 border border-slate-200/60 rounded-2xl p-6 shadow-sm">
+              <QuizUploadPanel
+                tone="admin"
+                busy={saving}
+                onParsed={handleUploadParsed}
+              />
+            </div>
+          )}
+
+          {/* AI Generate tab */}
+          {tab === 'ai' && (
+            <div className="bg-white/80 border border-slate-200 rounded-2xl p-6 shadow-sm">
+              {genError && (
+                <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-sm flex items-center gap-2">
+                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {genError}
+                  <button onClick={() => setGenError('')} className="ml-auto text-rose-400 hover:text-rose-600">
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              <AIGenerateForm
+                onGenerate={handleGenerate}
+                onCopyPrompt={handleCopyPrompt}
+                disabled={generating || saving}
+              />
+            </div>
+          )}
         </div>
       </main>
+
+      {/* AI 生成对话框 */}
+      <AIGenerateDialog
+        open={generating}
+        topic={genTopic}
+        counts={genCounts}
+        token={typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null}
+        onComplete={handleGenerateComplete}
+        onError={handleGenerateError}
+        onCancel={handleCancelGenerate}
+      />
+
+      {/* AI 生成预览 */}
+      {genQuestions.length > 0 && (
+        <AIGeneratePreview
+          questions={genQuestions}
+          topic={genTopic}
+          timeLimit={timeLimit}
+          onTimeLimitChange={setTimeLimit}
+          onSave={handleSaveAIQuestions}
+          onRegenerate={handleRegenerate}
+          onCopyPrompt={handleCopyPromptFromPreview}
+          saving={saving}
+        />
+      )}
     </div>
   );
 }

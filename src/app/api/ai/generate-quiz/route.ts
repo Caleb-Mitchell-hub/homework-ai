@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTokenFromHeaders, verifyToken } from '@/lib/auth';
+import { verifyAdminToken } from '@/lib/admin-auth';
 import { prisma } from '@/lib/prisma';
 import { decryptApiKey } from '@/lib/ai/crypto';
 import { callChatStream } from '@/lib/ai/providers';
@@ -86,15 +87,24 @@ export async function POST(req: NextRequest) {
   if (!token) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
-  const payload = verifyToken(token);
-  if (!payload) {
-    return NextResponse.json({ error: '无效的token' }, { status: 401 });
-  }
-  if (payload.isGuest) {
-    return NextResponse.json(
-      { error: '游客暂不支持 AI 生成题库，请登录后使用' },
-      { status: 403 },
-    );
+
+  // 优先用用户 token，其次用管理员 token
+  let userId: string;
+  const userPayload = verifyToken(token);
+  if (userPayload) {
+    if (userPayload.isGuest) {
+      return NextResponse.json(
+        { error: '游客暂不支持 AI 生成题库，请登录后使用' },
+        { status: 403 },
+      );
+    }
+    userId = userPayload.userId;
+  } else {
+    const adminPayload = verifyAdminToken(token);
+    if (!adminPayload) {
+      return NextResponse.json({ error: '无效的token' }, { status: 401 });
+    }
+    userId = adminPayload.userId;
   }
 
   const body = await req.json().catch(() => null);
@@ -127,7 +137,7 @@ export async function POST(req: NextRequest) {
   // 预估积分 + 扣费
   const estimatedCost = estimateGenerateCost(cleaned!);
   try {
-    await chargeForGenerate(payload.userId, estimatedCost);
+    await chargeForGenerate(userId, estimatedCost);
   } catch (err) {
     if (err instanceof InsufficientCreditsForGenerateError) {
       return NextResponse.json(
@@ -235,7 +245,7 @@ export async function POST(req: NextRequest) {
         } catch {
           console.error('[generate-quiz] JSON 解析失败');
           // JSON 解析失败 → 退款
-          await adjustForGenerate(payload.userId, estimatedCost);
+          await adjustForGenerate(userId, estimatedCost);
           send({
             type: 'error',
             message: 'AI 返回格式异常，积分已退还，请重试',
@@ -250,7 +260,7 @@ export async function POST(req: NextRequest) {
           parsed.questions.length === 0
         ) {
           console.error('[generate-quiz] AI 未生成有效题目');
-          await adjustForGenerate(payload.userId, estimatedCost);
+          await adjustForGenerate(userId, estimatedCost);
           send({
             type: 'error',
             message:
@@ -275,7 +285,7 @@ export async function POST(req: NextRequest) {
         const diff = estimatedCost - actualCost;
         if (diff !== 0) {
           console.log('[generate-quiz] 积分调整: 预估=%d 实际=%d 差额=%d', estimatedCost, actualCost, diff);
-          await adjustForGenerate(payload.userId, diff);
+          await adjustForGenerate(userId, diff);
         }
 
         // 校验题型数量偏差
@@ -304,7 +314,7 @@ export async function POST(req: NextRequest) {
           console.log('[generate-quiz] 客户端断开或超时，已接收 %d 字符', fullContent.length);
           // 超时/断开也退款（用户未拿到完整结果）
           try {
-            await adjustForGenerate(payload.userId, estimatedCost);
+            await adjustForGenerate(userId, estimatedCost);
             console.log('[generate-quiz] 已退款 %d 积分（超时/断开）', estimatedCost);
           } catch (refundErr) {
             console.error('[generate-quiz] 退款失败:', refundErr);
@@ -314,7 +324,7 @@ export async function POST(req: NextRequest) {
           console.error('[generate-quiz] 生成失败:', errorMsg, 'provider:', provider.baseURL);
           // 异常 → 退款
           try {
-            await adjustForGenerate(payload.userId, estimatedCost);
+            await adjustForGenerate(userId, estimatedCost);
             console.log('[generate-quiz] 已退款 %d 积分', estimatedCost);
           } catch (refundErr) {
             console.error('[generate-quiz] 退款失败:', refundErr);

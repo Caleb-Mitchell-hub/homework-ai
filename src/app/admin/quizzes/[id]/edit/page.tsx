@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import AdminSidebar from '@/components/AdminSidebar';
 import { useDialog } from '@/components/DialogProvider';
+import { PRESET_CATEGORIES, PREFIX_PRESET } from '@/lib/quizCategories';
 
 interface Question {
   id?: string;
@@ -24,6 +25,7 @@ export default function EditQuizPage() {
   const [title, setTitle] = useState('');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isOfficial, setIsOfficial] = useState(false);
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -48,6 +50,7 @@ export default function EditQuizPage() {
         if (data.quiz) {
           setTitle(data.quiz.title);
           setIsOfficial(data.quiz.isOfficial);
+          setCategoryId(data.quiz.categoryId ?? null);
           setQuestions(data.quiz.questions || []);
         } else {
           setError(data.error || '加载失败');
@@ -88,7 +91,7 @@ export default function EditQuizPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ title: title.trim(), questions }),
+        body: JSON.stringify({ title: title.trim(), questions, categoryId }),
       });
       if (res.ok) {
         router.push('/admin/quizzes');
@@ -199,6 +202,22 @@ export default function EditQuizPage() {
             onChange={(e) => setTitle(e.target.value)}
             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
           />
+        </div>
+
+        <div className="bg-white/80 border border-slate-200/60 rounded-2xl p-6 mb-6 shadow-sm">
+          <label className="block text-slate-700 text-sm mb-2 font-medium">题库分类</label>
+          <select
+            value={categoryId ?? ''}
+            onChange={(e) => setCategoryId(e.target.value || null)}
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+          >
+            <option value="">未分类</option>
+            {PRESET_CATEGORIES.map((c) => (
+              <option key={c.key} value={`${PREFIX_PRESET}${c.key}`}>
+                {c.emoji} {c.text}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="space-y-4">
