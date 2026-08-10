@@ -405,3 +405,28 @@ body {
 .markdown-base { font-size: 14px; }
 .markdown-lg { font-size: 16px; }
 .markdown-xl { font-size: 18px; }
+
+/* ─────────────────────────────────────────────
+   Welcome 页面浮动几何图形动画
+   ───────────────────────────────────────────── */
+
+@keyframes welcome-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(8px, -12px) scale(1.04);
+  }
+  50% {
+    transform: translate(-6px, 6px) scale(0.97);
+  }
+  75% {
+    transform: translate(-10px, -4px) scale(1.02);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes welcome-float {
+    0%, 100% { transform: none; }
+  }
+}
