@@ -64,11 +64,11 @@ interface CategoryContextValue {
   getNodeTree: () => CategoryNode[];
   getChildren: (parentId: CategoryId | null) => Category[];
   /** CRUD(用户分类) */
-  createCategory: (name: string, parentId: CategoryId | null) => Category;
-  renameCategory: (id: CategoryId, name: string) => void;
-  deleteCategory: (id: CategoryId) => void;
+  createCategory: (name: string, parentId: CategoryId | null) => Promise<Category>;
+  renameCategory: (id: CategoryId, name: string) => Promise<void>;
+  deleteCategory: (id: CategoryId) => Promise<void>;
   /** 给答题记录分配分类 */
-  setResultCategory: (resultId: string, categoryId: CategoryId | null) => void;
+  setResultCategory: (resultId: string, categoryId: CategoryId | null) => Promise<void>;
   getResultCategory: (resultId: string) => CategoryId | null;
   /** 当前用户 id(已登录) / null(未登录,所有 CRUD 会被忽略) */
   currentUserId: string | null;
@@ -165,29 +165,42 @@ export function CategoryProvider({ children }: { children: ReactNode }) {
   // 记录上次 hydrate 的 userId,避免重复初始化
   const lastUserIdRef = useRef<string | null>(null);
 
-  // user 切换时重新 hydrate
+  // user 切换时重新从服务端加载分类
   useEffect(() => {
-    // 已登录 → 加载 / 初始化 / 迁移
     if (currentUserId) {
       if (lastUserIdRef.current === currentUserId) return;
       lastUserIdRef.current = currentUserId;
 
-      let data = loadFromUserBucket(currentUserId);
-      // 该用户桶为空 → 尝试从老 key 迁移,迁移不到则 seed 一份空桶
-      if (data.categories.length === 0) {
-        const migrated = migrateLegacyToUser(currentUserId);
-        if (migrated) {
-          data = migrated;
-        } else {
-          const seeded = seedFor(currentUserId);
-          data = { categories: seeded, resultMap: {} };
-        }
-      }
-      setCategories(data.categories);
-      setResultMap(data.resultMap);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) return;
+
+      // 从服务端加载用户自定义分类
+      fetch('/api/result-categories', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          const serverCategories: Category[] = (data.categories ?? []).map((c: any) => ({
+            ...c,
+            system: false,
+          }));
+          setCategories([
+            ...SYSTEM_CATEGORIES,
+            { id: USER_ROOT_ID, name: '我的题库', parentId: null, order: -1 },
+            ...serverCategories,
+          ]);
+        })
+        .catch(() => {
+          // 加载失败时回退到空分类
+          setCategories([
+            ...SYSTEM_CATEGORIES,
+            { id: USER_ROOT_ID, name: '我的题库', parentId: null, order: -1 },
+          ]);
+        });
+
+      setResultMap({});
       setExpanded(new Set([USER_ROOT_ID, '__sys_recent']));
     } else {
-      // 登出:清空内存,避免显示上个用户的分类
       if (lastUserIdRef.current !== null) {
         lastUserIdRef.current = null;
         setCategories([]);
@@ -196,15 +209,6 @@ export function CategoryProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [currentUserId]);
-
-  // 持久化(每用户一桶)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!currentUserId) return;
-    // 跳过初始空状态(登出态)
-    if (categories.length === 0 && Object.keys(resultMap).length === 0) return;
-    saveToUserBucket(currentUserId, { categories, resultMap });
-  }, [categories, resultMap, currentUserId]);
 
   const getById = useCallback(
     (id: CategoryId | null | undefined) => {
@@ -240,41 +244,56 @@ export function CategoryProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const getToken = () => (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+
   const createCategory = useCallback(
-    (name: string, parentId: CategoryId | null): Category => {
+    async (name: string, parentId: CategoryId | null): Promise<Category> => {
       if (!currentUserId) throw new Error('未登录,不能创建分类');
-      const siblings = categories.filter((c) => c.parentId === parentId);
-      const order = siblings.length ? Math.max(...siblings.map((s) => s.order)) + 1 : 0;
-      const newCat: Category = {
-        id: genId(),
-        name: name.trim() || '未命名',
-        parentId,
-        order,
-      };
+      const token = getToken();
+      const res = await fetch('/api/result-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: name.trim(), parentId }),
+      });
+      if (!res.ok) throw new Error('创建分类失败');
+      const data = await res.json();
+      const newCat: Category = { ...data.category, system: false };
       setCategories((prev) => [...prev, newCat]);
       if (parentId) {
         setExpanded((prev) => new Set(prev).add(parentId));
       }
       return newCat;
     },
-    [categories, currentUserId]
+    [currentUserId]
   );
 
   const renameCategory = useCallback(
-    (id: CategoryId, name: string) => {
+    async (id: CategoryId, name: string) => {
       if (!currentUserId) return;
       const cat = categories.find((c) => c.id === id);
       if (!cat || cat.system) return;
+      const token = getToken();
+      await fetch(`/api/result-categories/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: name.trim() }),
+      });
       setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, name: name.trim() || c.name } : c)));
     },
     [categories, currentUserId]
   );
 
   const deleteCategory = useCallback(
-    (id: CategoryId) => {
+    async (id: CategoryId) => {
       if (!currentUserId) return;
       const cat = categories.find((c) => c.id === id);
       if (!cat || cat.system) return;
+      const token = getToken();
+      await fetch(`/api/result-categories/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      // 前端也递归删除子分类
       setCategories((prev) => {
         const toDelete = new Set<CategoryId>([id]);
         let changed = true;
@@ -306,14 +325,22 @@ export function CategoryProvider({ children }: { children: ReactNode }) {
   );
 
   const setResultCategory = useCallback(
-    (resultId: string, categoryId: CategoryId | null) => {
+    async (resultId: string, categoryId: CategoryId | null) => {
       if (!currentUserId) return;
+      const token = getToken();
+      // 乐观更新本地 state
       setResultMap((prev) => {
         const next = { ...prev };
         if (categoryId) next[resultId] = categoryId;
         else delete next[resultId];
         return next;
       });
+      // 异步调用服务端（失败不回滚，服务端才是权威）
+      fetch(`/api/results/${resultId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ categoryId }),
+      }).catch(() => { /* 静默失败 */ });
     },
     [currentUserId]
   );

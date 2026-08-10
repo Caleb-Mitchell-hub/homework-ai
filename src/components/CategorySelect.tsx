@@ -136,8 +136,9 @@ export default function CategorySelect({ value, onChange, placeholder = '未分�
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newName.trim()) {
                     // 挂在顶级(parentId: null),跟侧栏「+ 新建顶级分类」语义一致
-                    const c = ctx.createCategory(newName.trim(), null);
-                    onChange(c.id);
+                    ctx.createCategory(newName.trim(), null).then((c) => {
+                      onChange(c.id);
+                    });
                     setNewName('');
                     setCreating(false);
                     setOpen(false);
