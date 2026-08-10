@@ -192,13 +192,14 @@ export async function POST(request: NextRequest) {
 
         send({ type: 'progress', stage: 'generating', message: 'AI 正在生成报告…', progress: 20 });
 
-        // 流式调用 AI
+        // 流式调用 AI（不开启 jsonMode，让模型自由输出。
+        // extractJson 有 5 种回退策略，能处理 markdown 代码块、截断、引号等问题）
         const generator = callChatStream({
           baseURL: provider.baseURL,
           apiKey,
           model: provider.model,
           messages: [{ role: 'system', content: prompt }],
-          jsonMode: true,
+          jsonMode: false,
           maxTokens: 4096,
           temperature: 0.5,
           signal: combinedSignal,
@@ -231,16 +232,32 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        if (!parsed || typeof parsed.advice !== 'string' || !Array.isArray(parsed.knowledgePoints)) {
-          console.error('[report] AI 返回结构不匹配: keys=%s', parsed ? Object.keys(parsed).join(',') : 'null');
+        // 容错：advice 可能是嵌套对象（如 { content: "..." }），尝试提取
+        let adviceText = '';
+        if (typeof parsed?.advice === 'string') {
+          adviceText = parsed.advice;
+        } else if (parsed?.advice && typeof parsed.advice === 'object') {
+          adviceText = String((parsed.advice as any).content ?? (parsed.advice as any).text ?? '');
+        }
+
+        if (!parsed || !adviceText || !Array.isArray(parsed.knowledgePoints)) {
+          const rawSummary = fullContent.slice(0, 500).replace(/\n/g, '\\n');
+          const keys = parsed ? Object.keys(parsed).join(', ') : 'null';
+          console.error('[report] 结构不匹配: keys=%s adviceType=%s kpType=%s raw=%s',
+            keys, typeof parsed?.advice, Array.isArray(parsed?.knowledgePoints) ? 'array' : typeof parsed?.knowledgePoints, rawSummary);
           // 退款
           await prisma.$transaction(async (tx) => {
             await tx.user.update({ where: { id: payload.userId }, data: { credits: { increment: REPORT_COST } } });
             await tx.creditLedger.create({ data: { userId: payload.userId, delta: REPORT_COST, reason: 'refund', refId: result.id, balance: user.credits } });
           });
-          send({ type: 'error', message: `AI 返回格式不正确（缺少必要字段），积分已退还`, code: 'FORMAT_ERROR' });
+          send({
+            type: 'error',
+            message: `AI 返回格式不正确（缺少必要字段），积分已退还。\n返回字段: ${keys}\n原始内容摘要: ${rawSummary.slice(0, 300)}`,
+            code: 'FORMAT_ERROR',
+          });
           return;
         }
+        parsed.advice = adviceText;
 
         const content = { knowledgePoints: parsed.knowledgePoints, advice: parsed.advice };
 
