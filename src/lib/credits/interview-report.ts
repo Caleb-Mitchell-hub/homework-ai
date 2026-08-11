@@ -31,12 +31,12 @@ export async function generateInterviewReport(
   quizTitle: string,
   questions: InterviewQuestionResult[],
   difficultyProfile?: string,
+  signal?: AbortSignal,
 ): Promise<{ content: InterviewReportResult; cached: boolean; newBalance: number; costCredit: number }> {
   const totalScore = questions.reduce((sum, q) => sum + q.score, 0);
   const maxScore = questions.length * 100;
 
-  // 查缓存：按 resultId 查 AIReport（但面试题报告是另存的，这里简单做：检查最近生成的面试报告是否内容相同）
-  // 面试题报告不做缓存（每次生成都是新的），直接扣积分生成
+  // 缓存检查由调用方（API route）在调用前完成，本函数仅负责扣积分 + 生成报告
 
   // 检查积分
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { credits: true } });
@@ -93,6 +93,10 @@ export async function generateInterviewReport(
       difficultyProfile,
     });
 
+    // 面试报告最多 120 秒，同时监听调用方传入的 signal
+    const reportSignal = signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(120_000)])
+      : AbortSignal.timeout(120_000);
     const content = await callChat({
       baseURL: provider.baseURL,
       apiKey,
@@ -102,8 +106,9 @@ export async function generateInterviewReport(
         { role: 'user', content: prompt },
       ],
       jsonMode: true,
-      maxTokens: 16000,
+      maxTokens: 8000,
       temperature: 0.7,
+      signal: reportSignal,
     });
 
     let parsed: InterviewReportResult;

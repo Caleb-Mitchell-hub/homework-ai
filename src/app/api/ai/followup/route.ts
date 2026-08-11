@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
+import { verifyToken, getTokenFromHeaders, updateUserActiveTime } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { callChatStream } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
@@ -23,6 +23,8 @@ export async function POST(request: NextRequest) {
   if (payload?.isGuest) {
     return NextResponse.json({ error: '游客暂不支持 AI 追问，请登录后使用' }, { status: 403 });
   }
+
+  updateUserActiveTime(userId);
 
   // 2. 解析请求体
   const body = await request.json().catch(() => null);

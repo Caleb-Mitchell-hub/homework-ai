@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
+import { verifyToken, getTokenFromHeaders, updateUserActiveTime } from '@/lib/auth';
 import { explainQuestion, InsufficientCreditsError } from '@/lib/credits/explain';
 
 export async function POST(request: NextRequest) {
@@ -9,6 +9,8 @@ export async function POST(request: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
+
+  updateUserActiveTime(userId);
 
   const body = await request.json().catch(() => null);
   const { questionId, content, type, userAnswer, correctAnswer, options } = body || {};

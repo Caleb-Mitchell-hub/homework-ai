@@ -76,6 +76,7 @@ async function* doStreamFetch(opts: CallChatOpts, useJsonMode: boolean): AsyncGe
   const url = `${opts.baseURL.replace(/\/$/, '')}/chat/completions`;
   const signal = opts.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
 
+  const tFetchStart = Date.now();
   let res: Response;
   try {
     res = await fetch(url, {
@@ -109,7 +110,8 @@ async function* doStreamFetch(opts: CallChatOpts, useJsonMode: boolean): AsyncGe
     throw err;
   }
 
-  console.log('[callChatStream] 连接成功, 开始流式读取');
+  const tStartStream = Date.now();
+  console.log('[callChatStream] 连接成功, 开始流式读取 (首字节耗时=%dms)', tStartStream - tFetchStart);
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -120,6 +122,8 @@ async function* doStreamFetch(opts: CallChatOpts, useJsonMode: boolean): AsyncGe
       if (signal.aborted) return;
       const { done, value } = await reader.read();
       if (done) {
+        const tTotal = Date.now() - tFetchStart;
+        console.log('[callChatStream] 流式读取完成, 总耗时=%dms', tTotal);
         yield { delta: '', done: true };
         return;
       }
@@ -132,6 +136,8 @@ async function* doStreamFetch(opts: CallChatOpts, useJsonMode: boolean): AsyncGe
         if (!trimmed || !trimmed.startsWith('data:')) continue;
         const payload = trimmed.slice(5).trim();
         if (payload === '[DONE]') {
+          const tTotal = Date.now() - tFetchStart;
+          console.log('[callChatStream] 收到 [DONE], 总耗时=%dms', tTotal);
           yield { delta: '', done: true };
           return;
         }

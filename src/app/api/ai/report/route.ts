@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
+import { verifyToken, getTokenFromHeaders, updateUserActiveTime } from '@/lib/auth';
 import { callChatStream } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
 import { extractJson } from '@/lib/ai/json-extractor';
@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
   if (!payload) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
+
+  updateUserActiveTime(payload.userId);
 
   const resultId = request.nextUrl.searchParams.get('resultId');
   if (!resultId) {
@@ -43,6 +45,8 @@ export async function POST(request: NextRequest) {
   if (!payload) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
+
+  updateUserActiveTime(payload.userId);
 
   const body = await request.json().catch(() => null);
   if (!body?.resultId) {

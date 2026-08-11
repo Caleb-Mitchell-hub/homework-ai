@@ -162,7 +162,7 @@ export default function ReportView({
     }
   };
 
-  /** 面试题报告生成（100积分） */
+  /** SSE 流式面试题报告生成（100积分） */
   const generateInterviewReport = async () => {
     if (user?.isGuest) {
       await dialog.alert({ title: '游客受限', message: '游客功能暂未开通，请登录使用 AI 面试分析' });
@@ -171,27 +171,73 @@ export default function ReportView({
     setLoading(true);
     setError(null);
     startProgress();
+
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     try {
       const res = await fetch('/api/ai/interview-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ resultId }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.required && data.balance != null) {
-          setError(`积分不足:需要 ${data.required},当前 ${data.balance}`);
-        } else {
-          setError(data.error ?? '生成失败');
+
+      // 缓存命中 / 错误 → JSON 响应
+      if (res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (!res.ok) {
+          if (data.required != null) setError(`积分不足：需要 ${data.required}，当前 ${data.balance}`);
+          else setError(data.error ?? '生成失败');
+          return;
         }
+        // 缓存命中
+        setReport(data.content);
+        setNewBalance(data.newBalance ?? null);
         return;
       }
-      setReport(data.content);
-      setNewBalance(data.newBalance);
-      refreshCredits();
+
+      // SSE 流式响应
+      if (!res.ok || !res.body) {
+        setError(`HTTP ${res.status}`);
+        return;
+      }
+
+      reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop() ?? '';
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line) continue;
+          const data = line.replace(/^data: /, '').trim();
+          try {
+            const evt = JSON.parse(data);
+            if (evt.type === 'delta') {
+              setStreamContent((prev) => prev + (evt.text ?? ''));
+            } else if (evt.type === 'progress') {
+              if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null; }
+              setProgressMsg(evt.message ?? '');
+              setProgress(evt.progress ?? progress);
+            } else if (evt.type === 'complete') {
+              setProgress(100);
+              setReport(evt.content);
+              setNewBalance(evt.newBalance);
+              refreshCredits();
+              return;
+            } else if (evt.type === 'error') {
+              setError(evt.message ?? '生成失败');
+              return;
+            }
+          } catch { /* ignore malformed events */ }
+        }
+      }
     } catch (e: any) {
-      setError(e?.message ?? '生成失败');
+      if (e.name !== 'AbortError') setError(e?.message ?? '生成失败');
     } finally {
+      if (reader) reader.cancel().catch(() => {});
       stopProgress();
       setLoading(false);
       setProgressMsg('');

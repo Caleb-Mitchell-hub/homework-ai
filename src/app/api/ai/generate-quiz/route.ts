@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTokenFromHeaders, verifyToken } from '@/lib/auth';
+import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { verifyAdminToken } from '@/lib/admin-auth';
 import { prisma } from '@/lib/prisma';
 import { decryptApiKey } from '@/lib/ai/crypto';
@@ -109,6 +109,9 @@ export async function POST(req: NextRequest) {
     userId = userPayload.userId;
   }
 
+  // 非管理员用户更新最近活跃时间
+  if (!isAdmin) updateUserActiveTime(userId);
+
   const body = await req.json().catch(() => null);
   const topic: string = (body?.topic ?? '').trim().slice(0, MAX_TOPIC_CHARS);
   if (!topic) {
@@ -211,6 +214,7 @@ export async function POST(req: NextRequest) {
 
         // 流式调用 AI（不开启 jsonMode，让模型自由输出。
         // extractJson 有 5 种回退策略，能处理 markdown 代码块、截断、引号等问题）
+        const tGenStart = Date.now();
         const generator = callChatStream({
           baseURL: provider.baseURL,
           apiKey,
@@ -220,7 +224,7 @@ export async function POST(req: NextRequest) {
             { role: 'user', content: userPrompt },
           ],
           jsonMode: false,
-          maxTokens: 8192,
+          maxTokens: 4096,
           temperature: 0.7,
           signal: combinedSignal,
         });
@@ -240,9 +244,10 @@ export async function POST(req: NextRequest) {
           progress: 85,
         });
 
-        console.log('[generate-quiz] AI 返回 %d 字符，开始解析', fullContent.length);
+        console.log('[generate-quiz] AI 返回 %d 字符，AI流式耗时=%dms，开始解析', fullContent.length, Date.now() - tGenStart);
 
         // 解析 JSON
+        const tParseStart = Date.now();
         let parsed: { questions?: any[] };
         try {
           parsed = extractJson<{ questions?: any[] }>(fullContent);
@@ -274,7 +279,7 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        console.log('[generate-quiz] 解析到 %d 题', parsed.questions.length);
+        console.log('[generate-quiz] 解析到 %d 题, JSON解析耗时=%dms', parsed.questions.length, Date.now() - tParseStart);
 
         // 标准化题目
         const questions = autoConvertEssayToInterview(

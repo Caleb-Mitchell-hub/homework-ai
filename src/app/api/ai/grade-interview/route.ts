@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getTokenFromHeaders, verifyToken } from '@/lib/auth';
+import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { buildInterviewGradingPrompt } from '@/lib/ai/grading-prompt';
 import { callChat } from '@/lib/ai/providers';
@@ -20,6 +20,8 @@ export async function POST(request: Request) {
     if (payload.isGuest) {
       return NextResponse.json({ error: '游客暂不支持 AI 评分，请登录后使用' }, { status: 403 });
     }
+
+    updateUserActiveTime(payload.userId);
 
     const { resultId, questionId } = await request.json();
     if (!resultId || !questionId) {
@@ -68,6 +70,11 @@ export async function POST(request: Request) {
     const apiKey = decryptApiKey(provider.apiKeyCipher);
     // 使用 system + user 分离结构，让 AI 更好地针对每道题给出差异化评分
     // temperature 提高到 0.8，避免低温度导致不同题目得分趋同
+    // 超时：单题评分最多 90 秒，同时监听客户端断开
+    const gradeSignal = AbortSignal.any([
+      request.signal,
+      AbortSignal.timeout(90_000),
+    ]);
     const content = await callChat({
       baseURL: provider.baseURL,
       apiKey,
@@ -83,6 +90,7 @@ export async function POST(request: Request) {
       jsonMode: true,
       maxTokens: 3000,
       temperature: 0.8,
+      signal: gradeSignal,
     });
 
     let parsed: { score?: number; strengths?: string[]; weaknesses?: string[]; suggestion?: string; comment?: string };
@@ -116,10 +124,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ interviewScore, interviewFeedback });
   } catch (error) {
-    console.error('单题面试评分错误:', error);
+    const isAbort = error instanceof DOMException && error.name === 'AbortError';
+    const isTimeout = isAbort && !request.signal.aborted;
+    console.error('单题面试评分错误:', isTimeout ? '超时(90s)' : isAbort ? '客户端断开' : error);
     return NextResponse.json(
-      { error: 'AI 评分服务暂时不可用，请稍后重试' },
-      { status: 500 },
+      { error: isTimeout ? 'AI 评分超时（90秒），请重试' : isAbort ? '请求已取消' : 'AI 评分服务暂时不可用，请稍后重试' },
+      { status: isAbort ? 408 : 500 },
     );
   }
 }
