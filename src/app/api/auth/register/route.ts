@@ -59,6 +59,7 @@ export async function POST(request: Request) {
           password: hashedPassword,
           isGuest: false,
           credits: SIGNUP_BONUS,
+          lastActiveAt: new Date(),
           securityQuestion: finalSecurityQuestion,
           securityAnswerHash: hashedAnswer,
           professionId: professionId || null,

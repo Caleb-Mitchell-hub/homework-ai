@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, getTokenFromHeaders } from '@/lib/auth';
+import { verifyToken, getTokenFromHeaders, updateUserActiveTime } from '@/lib/auth';
 import { checkInToday, AlreadyCheckedInError } from '@/lib/credits/checkin';
 
 export async function POST(request: NextRequest) {
@@ -9,6 +9,8 @@ export async function POST(request: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
+
+  updateUserActiveTime(userId);
 
   try {
     const result = await checkInToday(userId);

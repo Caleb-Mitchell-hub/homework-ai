@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getTokenFromHeaders, verifyToken } from '@/lib/auth';
+import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(request: Request) {
@@ -13,6 +13,9 @@ export async function GET(request: Request) {
     if (!payload) {
       return NextResponse.json({ error: '无效的token' }, { status: 401 });
     }
+
+    // 更新最近活跃时间（每次页面加载/刷新都会调用此接口）
+    updateUserActiveTime(payload.userId);
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
