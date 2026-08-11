@@ -36,7 +36,7 @@ type Tone = 'admin' | 'user';
 interface Props {
   tone?: Tone;
   /** 解析成功后回调，父组件负责 POST + 跳转 */
-  onParsed: (title: string, questions: ParsedQuestion[]) => Promise<void>;
+  onParsed: (title: string, questions: ParsedQuestion[], originalText: string) => Promise<void>;
   busy?: boolean;
 }
 
@@ -167,7 +167,7 @@ export default function QuizUploadPanel({ tone = 'user', onParsed, busy }: Props
     }
     const title = extractTitle(preview);
     try {
-      await onParsed(title, qs);
+      await onParsed(title, qs, preview);
     } catch (err) {
       setError('保存失败: ' + (err instanceof Error ? err.message : String(err)));
     }

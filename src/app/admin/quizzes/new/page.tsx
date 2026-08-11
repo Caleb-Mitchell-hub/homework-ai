@@ -8,6 +8,8 @@ import QuizUploadPanel, { type ParsedQuestion } from '@/components/admin/QuizUpl
 import AIGenerateForm from '@/components/AIGenerateForm';
 import AIGenerateDialog from '@/components/AIGenerateDialog';
 import AIGeneratePreview from '@/components/AIGeneratePreview';
+import UploadParsePreview from '@/components/UploadParsePreview';
+import ParseFixDialog from '@/components/ParseFixDialog';
 import {
   buildGenerateSystemPrompt,
   buildGenerateUserPrompt,
@@ -37,6 +39,14 @@ export default function NewQuizPage() {
     topic: string;
     counts: Record<string, number>;
   }>({ topic: '', counts: {} });
+
+  // 上传解析预览状态
+  const [parsedData, setParsedData] = useState<{
+    title: string;
+    questions: ParsedQuestion[];
+    originalText: string;
+  } | null>(null);
+  const [showFixDialog, setShowFixDialog] = useState(false);
 
   useEffect(() => {
     if (adminLoading) return;
@@ -151,42 +161,62 @@ export default function NewQuizPage() {
 
   // ---- Upload handler ----
   const handleUploadParsed = useCallback(
-    async (parsedTitle: string, parsedQuestions: ParsedQuestion[]) => {
+    async (parsedTitle: string, parsedQuestions: ParsedQuestion[], originalText: string) => {
       setError('');
-      if (!parsedTitle.trim()) {
-        setError('未能从文件中提取到标题');
+      if (parsedQuestions.length === 0) {
+        setError('未能解析到任何题目');
         return;
       }
-      setSaving(true);
-      const token = localStorage.getItem('adminToken');
-      try {
-        const res = await fetch('/api/admin/quizzes', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            title: parsedTitle.trim(),
-            questions: parsedQuestions,
-            isOfficial: true,
-            timeLimit,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || '创建失败');
-          return;
-        }
-        router.push('/admin/quizzes');
-      } catch {
-        setError('网络错误');
-      } finally {
-        setSaving(false);
-      }
+      setParsedData({
+        title: parsedTitle.trim() || '未命名题库',
+        questions: parsedQuestions,
+        originalText,
+      });
     },
-    [timeLimit, router],
+    [],
   );
+
+  // 保存上传解析的题库
+  const handleSaveParsed = useCallback(async () => {
+    if (!parsedData || parsedData.questions.length === 0) return;
+    setSaving(true);
+    setError('');
+    const token = localStorage.getItem('adminToken');
+    try {
+      const res = await fetch('/api/admin/quizzes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: parsedData.title,
+          questions: parsedData.questions,
+          isOfficial: true,
+          timeLimit,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || '保存失败');
+        return;
+      }
+      router.push('/admin/quizzes');
+    } catch {
+      setError('网络错误');
+    } finally {
+      setSaving(false);
+    }
+  }, [parsedData, timeLimit, router]);
+
+  const handleReParse = useCallback(() => {
+    setParsedData(null);
+  }, []);
+
+  const handleFixQuestions = useCallback((fixedQuestions: ParsedQuestion[]) => {
+    setParsedData((prev) => prev ? { ...prev, questions: fixedQuestions } : null);
+    setShowFixDialog(false);
+  }, []);
 
   if (adminLoading || !admin) {
     return (
@@ -337,6 +367,32 @@ export default function NewQuizPage() {
           onRegenerate={handleRegenerate}
           onCopyPrompt={handleCopyPromptFromPreview}
           saving={saving}
+        />
+      )}
+
+      {/* 上传解析预览 */}
+      {parsedData && (
+        <UploadParsePreview
+          questions={parsedData.questions}
+          title={parsedData.title}
+          originalText={parsedData.originalText}
+          timeLimit={timeLimit}
+          onTimeLimitChange={setTimeLimit}
+          onSave={handleSaveParsed}
+          onFix={() => setShowFixDialog(true)}
+          onReParse={handleReParse}
+          saving={saving}
+        />
+      )}
+
+      {/* 修正解析对话框 */}
+      {parsedData && showFixDialog && (
+        <ParseFixDialog
+          open={showFixDialog}
+          originalText={parsedData.originalText}
+          currentQuestions={parsedData.questions}
+          onClose={() => setShowFixDialog(false)}
+          onQuestionsUpdated={handleFixQuestions}
         />
       )}
     </div>

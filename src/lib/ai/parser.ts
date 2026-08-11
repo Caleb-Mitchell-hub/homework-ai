@@ -159,7 +159,7 @@ export async function* aiParseQuestionsStream(opts: {
 > {
   const apiKey = decryptApiKey(opts.provider.apiKeyCipher);
   const text = opts.text.slice(0, MAX_TEXT_CHARS);
-  const maxTokens = opts.estimatedOutputTokens ?? 8000;
+  const maxTokens = opts.estimatedOutputTokens ?? 4000;
 
   yield { type: 'progress', data: { progress: 5, message: '正在准备...', receivedChars: 0 } };
   if (opts.signal?.aborted) return;
@@ -171,6 +171,7 @@ export async function* aiParseQuestionsStream(opts: {
 
   yield { type: 'progress', data: { progress: 8, message: 'AI 正在解析题目...', receivedChars: 0, expectedChars } };
 
+  const tStreamStart = Date.now();
   try {
     for await (const chunk of callChatStream({
       baseURL: opts.provider.baseURL,
@@ -210,6 +211,9 @@ export async function* aiParseQuestionsStream(opts: {
     return;
   }
 
+  const tStreamEnd = Date.now();
+  console.log('[aiParseQuestionsStream] AI 流式调用完成: %dms, 输出 %d 字符', tStreamEnd - tStreamStart, rawContent.length);
+
   if (opts.signal?.aborted) return;
 
   yield {
@@ -218,6 +222,7 @@ export async function* aiParseQuestionsStream(opts: {
   };
 
   // ── 解析 JSON → 规范化 ──
+  const tParseStart = Date.now();
   const arr = extractQuestions(rawContent);
   if (!arr) {
     const head500 = rawContent.slice(0, 500).replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
@@ -233,6 +238,8 @@ export async function* aiParseQuestionsStream(opts: {
   };
 
   const questions = autoConvertEssayToInterview(normalizeAIOutputToQuestions(arr, genId));
+  const tParseEnd = Date.now();
+  console.log('[aiParseQuestionsStream] JSON解析+规范化: %dms, 题目数=%d', tParseEnd - tParseStart, questions.length);
   yield { type: 'complete', questions };
 }
 
