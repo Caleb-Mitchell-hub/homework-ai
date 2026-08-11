@@ -30,7 +30,7 @@ export async function PATCH(
       data.text = text;
     }
     if (body.emoji !== undefined) {
-      data.emoji = (body.emoji ?? '').trim().slice(0, 10) || null;
+      data.emoji = (body.emoji ?? '').trim().slice(0, 500) || null;
     }
     if (body.order !== undefined) {
       const order = Number(body.order);

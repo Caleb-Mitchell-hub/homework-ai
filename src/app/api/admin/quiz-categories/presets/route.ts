@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const key = (body?.key ?? '').trim();
     const text = (body?.text ?? '').trim();
-    const emoji = (body?.emoji ?? '').trim().slice(0, 10) || null;
+    const emoji = (body?.emoji ?? '').trim().slice(0, 500) || null;
     const order = typeof body?.order === 'number' ? body.order : 0;
 
     if (!key || !text) {

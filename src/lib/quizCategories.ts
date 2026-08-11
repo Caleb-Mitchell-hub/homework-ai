@@ -48,6 +48,10 @@ export async function loadPresetCategories(): Promise<void> {
     for (const r of rows) {
       PRESET_CATEGORIES.push({ key: r.key, text: r.text, emoji: r.emoji ?? '' });
     }
+    // 同步刷新查找表
+    const maps = buildLookupMaps();
+    KEY_TO_TEXT = maps.text;
+    KEY_TO_EMOJI = maps.emoji;
   } catch (err) {
     console.error('加载预置分类失败，使用默认值:', err);
   }
@@ -58,13 +62,15 @@ export async function refreshPresetCategories(): Promise<void> {
   await loadPresetCategories();
 }
 
-const KEY_TO_TEXT: Record<string, string> = Object.fromEntries(
-  PRESET_CATEGORIES.map((c) => [c.key, c.text])
-);
+function buildLookupMaps() {
+  return {
+    text: Object.fromEntries(PRESET_CATEGORIES.map((c) => [c.key, c.text])),
+    emoji: Object.fromEntries(PRESET_CATEGORIES.map((c) => [c.key, c.emoji ?? ''])),
+  };
+}
 
-const KEY_TO_EMOJI: Record<string, string> = Object.fromEntries(
-  PRESET_CATEGORIES.map((c) => [c.key, c.emoji ?? ''])
-);
+let KEY_TO_TEXT: Record<string, string> = buildLookupMaps().text;
+let KEY_TO_EMOJI: Record<string, string> = buildLookupMaps().emoji;
 
 export const PREFIX_PRESET = 'preset:';
 export const PREFIX_USER = 'user:';

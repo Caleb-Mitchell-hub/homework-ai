@@ -245,6 +245,12 @@ export default function AdminCategoriesPage() {
             >
               {uploadingNewIcon ? '上传中…' : '📷 上传'}
             </button>
+            {newEmoji && (newEmoji.startsWith('http') || newEmoji.startsWith('/')) && (
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-lg">
+                {renderIcon(newEmoji, 'sm')}
+                <span className="text-[10px] text-slate-400 truncate max-w-[120px]">{newEmoji.split('/').pop()}</span>
+              </div>
+            )}
             <input
               type="number"
               value={newOrder}
