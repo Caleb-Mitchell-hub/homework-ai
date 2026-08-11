@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getCategoryDisplay, PREFIX_PRESET } from '@/lib/quizCategories';
 import { useQuizCategories } from '@/contexts/QuizCategoryContext';
 import SignupBonusModal from '@/components/SignupBonusModal';
+import CategoryIcon from '@/components/CategoryIcon';
 
 interface QuizListItem {
   id: string;
@@ -244,7 +245,7 @@ function HomeContent() {
                     : 'bg-white/70 border border-slate-200/60 text-slate-500 hover:text-slate-700 hover:bg-white'
                 }`}
               >
-                {cat.emoji} {cat.text} <span className="ml-1 opacity-70 tabular-nums">{count}</span>
+                <CategoryIcon emoji={cat.emoji} size="sm" /> {cat.text} <span className="ml-1 opacity-70 tabular-nums">{count}</span>
               </button>
             );
           })}
@@ -316,7 +317,7 @@ function HomeContent() {
                       </span>
                       <div className="flex items-center gap-1.5">
                         {display.kind !== 'none' && (
-                          <span className="text-[10px] text-slate-400">{display.emoji}</span>
+                          <CategoryIcon emoji={display.emoji} size="sm" />
                         )}
                         {q.timeLimit > 0 && (
                           <span className="text-[10px] text-slate-400 tabular-nums">{q.timeLimit} 分钟</span>
@@ -373,7 +374,7 @@ function HomeContent() {
                       </span>
                       <div className="flex items-center gap-1.5">
                         {display.kind !== 'none' && (
-                          <span className="text-[10px] text-slate-400">{display.emoji}</span>
+                          <CategoryIcon emoji={display.emoji} size="sm" />
                         )}
                         {q.timeLimit > 0 && (
                           <span className="text-[10px] text-slate-400 tabular-nums">{q.timeLimit} 分钟</span>

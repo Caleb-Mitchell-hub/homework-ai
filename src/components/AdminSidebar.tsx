@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import AdminSettingsPanel from '@/components/AdminSettingsPanel';
@@ -13,8 +12,6 @@ import {
   UserCard,
   DotPattern,
   DateLabel,
-  SidebarDrawer,
-  DrawerTrigger,
 } from '@/components/SidebarParts';
 
 const TONE_KEY = 'admin' as const;
@@ -119,108 +116,97 @@ export default function AdminSidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { admin } = useAdminAuth();
-  const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // 路由变化时自动关闭
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
-
-  const drawerContent = (
-    <>
-      {/* 顶部：品牌 + 关闭按钮 */}
-      <div className="relative p-4 border-b border-slate-200/60 flex-shrink-0">
-        <div className="flex items-start justify-between gap-2 pr-8">
-          <div className="min-w-0 flex-1">
-            <h2
-              className="text-[20px] leading-[1.15] text-slate-800 tracking-[-0.01em]"
-              style={SERIF.italic}
-            >
-              管理控制台
-            </h2>
-            <p className="text-[10px] text-slate-400 tracking-wider uppercase mt-0.5">
-              Admin Panel
-            </p>
-            <DateLabel />
-          </div>
-        </div>
-        <button
-          onClick={() => setOpen(false)}
-          className="absolute right-3 top-3 w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white/60 transition-all flex items-center justify-center"
-          title="关闭"
-          aria-label="关闭侧栏"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      {/* 导航 */}
-      <div className="flex-1 overflow-y-auto p-3">
-        <SectionLabel>Functions · 功能</SectionLabel>
-        <div className="space-y-0.5">
-          {NAV_ITEMS.map((item) => {
-            const active = pathname === item.path || pathname?.startsWith(item.path + '/');
-            return (
-              <NavItem
-                key={item.key}
-                tone={TONE_KEY}
-                icon={item.icon}
-                label={item.label}
-                active={active}
-                onClick={() => router.push(item.path)}
-              />
-            );
-          })}
-        </div>
-
-        <HairlineDivider />
-
-        <SectionLabel>Shortcuts · 快捷</SectionLabel>
-        <div className="space-y-0.5">
-          {QUICK_ITEMS.map((item) => (
-            <NavItem
-              key={item.key}
-              tone={TONE_KEY}
-              icon={item.icon}
-              label={item.label}
-              onClick={() => router.push(item.path)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* 底部：设置入口 */}
-      <div className="border-t border-slate-200/60 p-3 flex-shrink-0">
-        {admin && (
-          <UserCard
-            username={admin.username}
-            tone={TONE_KEY}
-            onClick={() => setSettingsOpen(true)}
-          />
-        )}
-      </div>
-    </>
-  );
 
   return (
     <>
-      {/* 触发按钮：portal 到 body，浮在左上角 */}
-      {mounted &&
-        createPortal(
-          <DrawerTrigger onClick={() => setOpen(true)} tone={TONE_KEY} />,
-          document.body
-        )}
-      <SidebarDrawer open={open} onClose={() => setOpen(false)} tone={TONE_KEY}>
-        {drawerContent}
-      </SidebarDrawer>
+      <aside
+        className="w-72 h-screen flex-shrink-0 flex flex-col border-r border-slate-200/60 shadow-2xl relative overflow-hidden"
+        style={{
+          background:
+            'linear-gradient(180deg, rgba(250,250,247,0.98) 0%, rgba(248,250,252,0.98) 100%)',
+        }}
+      >
+        {/* 顶部 2px 渐变高亮条 */}
+        <div className="absolute left-0 right-0 top-0 h-[2px] bg-gradient-to-r from-indigo-400 to-pink-400 z-10 opacity-80" />
+
+        {/* 内层柔光高光 */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 80% 30% at 0% 0%, rgba(255,255,255,0.55) 0%, transparent 60%)',
+          }}
+        />
+
+        <DotPattern tone={TONE_KEY} />
+
+        {/* 内容层 */}
+        <div className="relative flex-1 flex flex-col min-h-0">
+          {/* 顶部：品牌 */}
+          <div className="relative p-4 border-b border-slate-200/60 flex-shrink-0">
+            <div className="min-w-0 flex-1">
+              <h2
+                className="text-[20px] leading-[1.15] text-slate-800 tracking-[-0.01em]"
+                style={SERIF.italic}
+              >
+                管理控制台
+              </h2>
+              <p className="text-[10px] text-slate-400 tracking-wider uppercase mt-0.5">
+                Admin Panel
+              </p>
+              <DateLabel />
+            </div>
+          </div>
+
+          {/* 导航 */}
+          <div className="flex-1 overflow-y-auto p-3">
+            <SectionLabel>Functions · 功能</SectionLabel>
+            <div className="space-y-0.5">
+              {NAV_ITEMS.map((item) => {
+                const active = pathname === item.path || pathname?.startsWith(item.path + '/');
+                return (
+                  <NavItem
+                    key={item.key}
+                    tone={TONE_KEY}
+                    icon={item.icon}
+                    label={item.label}
+                    active={active}
+                    onClick={() => router.push(item.path)}
+                  />
+                );
+              })}
+            </div>
+
+            <HairlineDivider />
+
+            <SectionLabel>Shortcuts · 快捷</SectionLabel>
+            <div className="space-y-0.5">
+              {QUICK_ITEMS.map((item) => (
+                <NavItem
+                  key={item.key}
+                  tone={TONE_KEY}
+                  icon={item.icon}
+                  label={item.label}
+                  onClick={() => router.push(item.path)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* 底部：设置入口 */}
+          <div className="border-t border-slate-200/60 p-3 flex-shrink-0">
+            {admin && (
+              <UserCard
+                username={admin.username}
+                tone={TONE_KEY}
+                onClick={() => setSettingsOpen(true)}
+              />
+            )}
+          </div>
+        </div>
+      </aside>
+
       <AdminSettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </>
   );

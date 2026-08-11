@@ -6,6 +6,7 @@ import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import AdminSidebar from '@/components/AdminSidebar';
 import { useDialog } from '@/components/DialogProvider';
 import { PREFIX_PRESET } from '@/lib/quizCategories';
+import { getCategoryEmojiText } from '@/components/CategoryIcon';
 
 interface Question {
   id?: string;
@@ -225,7 +226,7 @@ export default function EditQuizPage() {
             <option value="">未分类</option>
             {presetCategories.map((c) => (
               <option key={c.key} value={`${PREFIX_PRESET}${c.key}`}>
-                {c.emoji} {c.text}
+                {getCategoryEmojiText(c.emoji)} {c.text}
               </option>
             ))}
           </select>

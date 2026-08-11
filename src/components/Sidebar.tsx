@@ -6,6 +6,7 @@ import { useQuizCategories } from '@/contexts/QuizCategoryContext';
 import { useRouter, usePathname } from 'next/navigation';
 import SettingsPanel from '@/components/SettingsPanel';
 import CreditBadge from '@/components/CreditBadge';
+import CategoryIcon from '@/components/CategoryIcon';
 import { sha256Hex } from '@/lib/hash';
 import { useDialog } from '@/components/DialogProvider';
 import {
@@ -333,7 +334,7 @@ export default function Sidebar({ open, onClose, onOpen }: Props) {
                   }}
                   className="w-full text-left flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px] text-slate-600 hover:bg-white/60 hover:text-slate-800 transition-colors"
                 >
-                  <span className="text-[13px]">{c.emoji}</span>
+                  <CategoryIcon emoji={c.emoji} size="sm" />
                   <span className="truncate">{c.text}</span>
                 </button>
               ))}

@@ -241,9 +241,10 @@ export default function AdminCreditsPage() {
   }
 
   return (
-    <div className="w-full min-h-screen bg-gradient-to-br from-sky-50 via-white to-pink-50">
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-sky-50 via-white to-pink-50">
       <AdminSidebar />
-      <main className="px-6 py-8 max-w-7xl mx-auto">
+      <main className="flex-1 overflow-y-auto">
+        <div className="px-6 py-8 max-w-7xl mx-auto">
         {/* 标题 */}
         <div className="mb-6">
           <div className="text-[10.5px] tracking-[0.25em] uppercase text-indigo-500/80 font-medium mb-1">
@@ -311,6 +312,7 @@ export default function AdminCreditsPage() {
         )}
         {tab === 'ledger' && <LedgerTab showToast={showToast} />}
         {tab === 'users' && <UsersTab showToast={showToast} toastOk={(t) => showToast('ok', t)} toastErr={(t) => showToast('err', t)} dialog={dialog} />}
+        </div>
       </main>
 
       {toast && (

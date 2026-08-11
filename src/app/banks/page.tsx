@@ -8,6 +8,7 @@ import { SERIF } from '@/components/SidebarParts';
 import { getCategoryDisplay, PREFIX_PRESET, PREFIX_USER } from '@/lib/quizCategories';
 import { useQuizCategories } from '@/contexts/QuizCategoryContext';
 import { quizToMarkdown } from '@/lib/quiz-to-markdown';
+import CategoryIcon, { getCategoryEmojiText } from '@/components/CategoryIcon';
 import JSZip from 'jszip';
 
 interface QuizListItem {
@@ -498,7 +499,7 @@ export default function BanksPage() {
           >
             <option value="all">全部分类</option>
             {quizCat.presetCategories.map((c) => (
-              <option key={c.key} value={`${PREFIX_PRESET}${c.key}`}>{c.emoji} {c.text}</option>
+              <option key={c.key} value={`${PREFIX_PRESET}${c.key}`}>{getCategoryEmojiText(c.emoji)} {c.text}</option>
             ))}
             <option value="uncat">📂 未分类</option>
             {quizCat.userCategories.map((uc) => (
@@ -659,7 +660,7 @@ export default function BanksPage() {
                           {(() => {
                             const cd = getCategoryDisplay(q.categoryId);
                             return cd.kind !== 'none' ? (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{cd.emoji} {cd.text}</span>
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500"><CategoryIcon emoji={cd.emoji} size="sm" /> {cd.text}</span>
                             ) : (
                               <span className="text-slate-300">未分类</span>
                             );
@@ -696,7 +697,7 @@ export default function BanksPage() {
                       >
                         <option value="">未分类</option>
                         {quizCat.presetCategories.map((c) => (
-                          <option key={c.key} value={`${PREFIX_PRESET}${c.key}`}>{c.emoji} {c.text}</option>
+                          <option key={c.key} value={`${PREFIX_PRESET}${c.key}`}>{getCategoryEmojiText(c.emoji)} {c.text}</option>
                         ))}
                         {quizCat.userCategories.length > 0 && (
                           <optgroup label="我的分类">
