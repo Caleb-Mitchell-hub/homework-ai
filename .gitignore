@@ -15,3 +15,7 @@ dist
 /src/generated/prisma
 public/uploads/
 用户测试/
+
+# Build artifacts
+*.tsbuildinfo
+push.log
