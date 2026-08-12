@@ -17,11 +17,24 @@ function genId(): string {
 
 function resolveUserId(req: NextRequest): string | null {
   const token = getTokenFromHeaders(req);
-  if (!token) return null;
+  if (!token) {
+    console.log('[parse-stream] resolveUserId: no token in headers');
+    return null;
+  }
+  const tokenPreview = token.length > 30 ? token.slice(0, 15) + '...' + token.slice(-5) : token;
+  const hasDot = token.includes('.');
+  console.log('[parse-stream] resolveUserId: token len=%d hasDot=%s preview=%s', token.length, hasDot, tokenPreview);
   const admin = verifyAdminToken(token);
-  if (admin) return `admin:${admin.adminId}`;
+  if (admin) {
+    console.log('[parse-stream] resolveUserId: admin verified, adminId=%s', admin.adminId);
+    return `admin:${admin.adminId}`;
+  }
   const user = getSession<{ userId: string; type?: string }>(token);
-  if (user?.userId) return `user:${user.userId}`;
+  if (user?.userId) {
+    console.log('[parse-stream] resolveUserId: user verified, userId=%s', user.userId);
+    return `user:${user.userId}`;
+  }
+  console.log('[parse-stream] resolveUserId: token verification FAILED — token len=%d hasDot=%s', token.length, hasDot);
   return null;
 }
 

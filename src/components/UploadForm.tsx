@@ -7,10 +7,20 @@ import { extractTitle } from '@/lib/parser';
 import { sha256Hex } from '@/lib/hash';
 import ParseChoiceDialog from '@/components/ParseChoiceDialog';
 import ParseProgressDialog from '@/components/ParseProgressDialog';
+import type { Question } from '@/types';
 
 const ALLOWED_ACCEPT = '.md,.txt,.pdf,.docx,.png,.jpg,.jpeg,.webp';
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXT = ['md', 'txt', 'pdf', 'docx', 'png', 'jpg', 'jpeg', 'webp'];
+
+/** 后台预解析状态 */
+interface BgParseState {
+  questions: Question[] | null;
+  error: string | null;
+  progress: number;
+  message: string;
+  streamContent: string;
+}
 
 function resolveFileAccept(file: File): 'text' | 'upload' {
   const ext = file.name.toLowerCase().split('.').pop() ?? '';
@@ -53,6 +63,77 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
   } | null>(null);
   const progressKey = (quizId: string) => `quiz_progress_${quizId}`;
 
+  // ─── 后台 AI 预解析：文本就绪后立即启动，不等用户点击 ───
+  const [bgParse, setBgParse] = useState<BgParseState | null>(null);
+  const bgAbortRef = useRef<AbortController | null>(null);
+  // 记录已启动后台解析的文本内容，用于检测用户是否编辑了文本
+  const bgParseTextRef = useRef<string>('');
+
+  /** 后台启动 AI 流式解析。完成后结果存入 bgParse，用户点击时可瞬间拿到结果。 */
+  const startBgParse = useCallback(async (text: string) => {
+    if (!token || !aiAvailable) return;
+    // Abort previous background parse
+    bgAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    bgAbortRef.current = ctrl;
+    bgParseTextRef.current = text;
+
+    setBgParse({ questions: null, error: null, progress: 5, message: 'AI 正在读取文档…', streamContent: '' });
+
+    try {
+      const res = await fetch('/api/ai/parse-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text, mode: 'ai' }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok || !res.body) {
+        const errData = await res.json().catch(() => ({}));
+        const rawError = errData.error ?? `HTTP ${res.status}`;
+        // 401 → session 失效（dev server 重启导致），提示刷新页面
+        if (res.status === 401) {
+          throw new Error('登录已过期,请刷新页面重新登录');
+        }
+        throw new Error(rawError);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop() ?? '';
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line) continue;
+          const data = line.replace(/^data: /, '').trim();
+          try {
+            const evt = JSON.parse(data);
+            if (evt.type === 'delta') {
+              setBgParse(prev => prev ? { ...prev, streamContent: prev.streamContent + (evt.content ?? '') } : null);
+            } else if (evt.error) {
+              setBgParse(prev => prev ? { ...prev, error: evt.error, progress: 0 } : null);
+              return;
+            } else if (evt.progress === 100 && evt.questions) {
+              setBgParse(prev => prev ? { ...prev, questions: evt.questions as Question[], progress: 100, message: '解析完成' } : null);
+              return;
+            } else if (typeof evt.progress === 'number') {
+              setBgParse(prev => prev ? { ...prev, progress: evt.progress, message: evt.message ?? prev.message } : null);
+            }
+          } catch { /* ignore malformed SSE events */ }
+        }
+      }
+      // Stream ended without completion event
+      setBgParse(prev => prev && !prev.questions && !prev.error ? { ...prev, error: '解析中断', progress: 0 } : prev);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'AI 预解析失败';
+      if (msg.includes('AbortError') || (err as Error)?.name === 'AbortError') return;
+      setBgParse(prev => prev ? { ...prev, error: msg, progress: 0 } : null);
+    }
+  }, [token, aiAvailable]);
+
   useImperativeHandle(ref, () => ({
     triggerFilePicker: () => {
       fileInputRef.current?.click();
@@ -86,6 +167,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
         const result = ev.target?.result as string;
         if (result) {
           setPreview(result);
+          if (aiAvailable) startBgParse(result);
           setPendingChoiceOpen(true);
         } else {
           setError('文件读取失败，请尝试重新选择文件');
@@ -108,6 +190,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? '上传失败');
         setPreview(data.text ?? '');
+        if (aiAvailable) startBgParse(data.text ?? '');
         setPendingChoiceOpen(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -115,7 +198,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
         setIsLoading(false);
       }
     }
-  }, [token]);
+  }, [token, aiAvailable, startBgParse]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -297,7 +380,15 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
         <div className="mb-6">
           <textarea
             value={preview}
-            onChange={(e) => setPreview(e.target.value)}
+            onChange={(e) => {
+              setPreview(e.target.value);
+              // 用户编辑文本后，后台解析结果作废
+              if (e.target.value !== bgParseTextRef.current) {
+                bgAbortRef.current?.abort();
+                setBgParse(null);
+                bgParseTextRef.current = '';
+              }
+            }}
             placeholder="在此粘贴 Markdown 格式的题目..."
             className="w-full h-64 p-4 bg-white/80 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 resize-none font-mono text-sm shadow-sm"
           />
@@ -309,6 +400,53 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             {error}
+          </div>
+        )}
+
+        {/* 后台 AI 预解析进度提示（文本就绪后自动启动，不等用户点击） */}
+        {bgParse && !bgParse.error && !bgParse.questions && (
+          <div className="mb-4 p-3 bg-violet-50/80 border border-violet-200 rounded-xl flex items-center gap-3">
+            <div className="w-5 h-5 rounded-full border-2 border-violet-300 border-t-violet-500 animate-spin flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[12px] text-violet-700 font-medium">🧠 {bgParse.message}</span>
+                <span className="text-[11px] text-violet-400">{bgParse.progress}%</span>
+              </div>
+              <div className="h-1.5 bg-violet-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-violet-400 to-pink-400 rounded-full transition-all duration-500"
+                  style={{ width: `${bgParse.progress}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 后台预解析完成提示 */}
+        {bgParse?.questions && (
+          <div className="mb-4 p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-center gap-3">
+            <span className="text-lg">✅</span>
+            <div>
+              <span className="text-[12px] text-emerald-700 font-medium">AI 已自动解析完成</span>
+              <span className="text-[11px] text-emerald-500 ml-2">共 {bgParse.questions.length} 题，点击下方按钮保存</span>
+            </div>
+          </div>
+        )}
+
+        {/* 后台预解析失败提示 */}
+        {bgParse?.error && (
+          <div className="mb-4 p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center gap-3">
+            <span className="text-lg">⚠️</span>
+            <div className="flex-1">
+              <span className="text-[12px] text-amber-700 font-medium">AI 预解析失败</span>
+              <span className="text-[11px] text-amber-500 ml-2">{bgParse.error.slice(0, 80)}</span>
+            </div>
+            <button
+              onClick={() => { bgAbortRef.current?.abort(); setBgParse(null); startBgParse(preview); }}
+              className="text-[11px] text-amber-700 underline hover:text-amber-900 flex-shrink-0"
+            >
+              重试
+            </button>
           </div>
         )}
 
@@ -324,6 +462,17 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
             onClick={() => {
               if (!preview.trim()) return;
               setError('');
+              // 🚀 后台预解析已完成 → 跳过所有弹窗，直接保存
+              if (bgParse?.questions) {
+                handleParseComplete(bgParse.questions);
+                return;
+              }
+              // 后台预解析进行中 → 直接显示进度弹窗（跳过选择弹窗）
+              if (bgParse && !bgParse.error && bgParse.progress > 0 && bgParse.progress < 100) {
+                setParseMode('ai');
+                setShowProgress(true);
+                return;
+              }
               // AI 不可用时跳过选择弹窗,直接本地解析
               if (aiAvailableResolved && !aiAvailable) {
                 setParseMode('local');
@@ -335,7 +484,7 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
             disabled={!preview.trim() || isLoading}
             className="flex-1 py-4 bg-gradient-to-r from-sky-400 to-emerald-400 text-white rounded-xl hover:from-sky-500 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-sky-200 flex items-center justify-center gap-2"
           >
-            开始解析
+            {bgParse?.questions ? '✓ 解析完成,立即保存' : '开始解析'}
           </button>
         </div>
 
@@ -373,6 +522,8 @@ const UploadForm = forwardRef<UploadFormHandle, UploadFormProps>(function Upload
           onComplete={handleParseComplete}
           onError={handleParseError}
           onCancel={() => setShowProgress(false)}
+          bgState={bgParse}
+          bgAbortRef={bgAbortRef}
         />
       )}
 
