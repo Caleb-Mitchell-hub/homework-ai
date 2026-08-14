@@ -64,6 +64,26 @@ export interface InterviewScoreResult {
 }
 
 /**
+ * 解析 AI 返回的评分字段（0-100）。
+ * 兼容 number、数字字符串（"85"）、带单位/分数格式（"85分"、"85/100"）等，
+ * 避免模型把 score 返回成字符串时被 `typeof === 'number'` 静默判成 0 分。
+ */
+export function parseScore(raw: unknown): number {
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw)) return 0;
+    return Math.round(Math.max(0, Math.min(100, raw)));
+  }
+  if (typeof raw === 'string') {
+    const m = raw.match(/\d+(?:\.\d+)?/);
+    if (m) {
+      const n = Number(m[0]);
+      if (Number.isFinite(n)) return Math.round(Math.max(0, Math.min(100, n)));
+    }
+  }
+  return 0;
+}
+
+/**
  * 面试题 AI 打分 prompt（0-100 分制）
  * 要求输出 JSON: { score, strengths, weaknesses, suggestion, comment }
  */

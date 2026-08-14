@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { INTERVIEW_REPORT_COST } from '@/lib/credits/interview-report';
-import { buildInterviewGradingPrompt } from '@/lib/ai/grading-prompt';
+import { buildInterviewGradingPrompt, parseScore } from '@/lib/ai/grading-prompt';
 import { buildMasteryAnalysisPrompt, buildImprovementAdvicePrompt } from '@/lib/ai/interview-report-prompt';
 import type { InterviewScoreResult } from '@/lib/ai/grading-prompt';
 import type { InterviewQuestionResult } from '@/lib/ai/interview-report-prompt';
@@ -48,7 +48,7 @@ async function gradeOnTheFly(
         { role: 'user', content: prompt },
       ],
       jsonMode: true,
-      maxTokens: 800,
+      maxTokens: 3000,
       temperature: 0.6,
       signal: gradeSignal,
     });
@@ -64,7 +64,7 @@ async function gradeOnTheFly(
     }
     const tParseMs = Date.now() - tParseStart;
     console.log('[perf] gradeOnTheFly 单题评分 | callChat=%dms | extractJson=%dms | 返回长度=%d', tCallMs, tParseMs, content.length);
-    const score = typeof parsed.score === 'number' ? Math.round(Math.max(0, Math.min(100, parsed.score))) : 0;
+    const score = parseScore(parsed.score);
     return {
       score,
       strengths: Array.isArray(parsed.strengths) ? parsed.strengths.filter((s: any) => typeof s === 'string') : [],

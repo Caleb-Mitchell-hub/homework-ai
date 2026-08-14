@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { buildInterviewGradingPrompt } from '@/lib/ai/grading-prompt';
+import { buildInterviewGradingPrompt, parseScore } from '@/lib/ai/grading-prompt';
 import { callChat } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
 import { extractJson } from '@/lib/ai/json-extractor';
@@ -101,10 +101,7 @@ export async function POST(request: Request) {
       // 降级：尝试用默认值兜底，避免整个评分流程中断
       parsed = { score: 0, strengths: [], weaknesses: ['AI 返回格式异常，请手动评分'], suggestion: '', comment: '' };
     }
-    const score = typeof parsed.score === 'number'
-      ? Math.round(Math.max(0, Math.min(100, parsed.score)))
-      : 0;
-    const interviewScore = score;
+    const interviewScore = parseScore(parsed.score);
     const interviewFeedback = {
       strengths: Array.isArray(parsed.strengths) ? parsed.strengths.filter((s: any) => typeof s === 'string') : [],
       weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses.filter((s: any) => typeof s === 'string') : [],
