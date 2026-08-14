@@ -116,6 +116,16 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
     }
   }
 
+  /** 对已评分题目重新触发 AI 评分（带确认） */
+  async function retriggerGrade(questionId: string) {
+    const ok = await dialog.confirm({
+      title: '重新评分',
+      message: '将重新调用 AI 对该题评分，是否继续？',
+      confirmText: '重新评分',
+    });
+    if (ok) await triggerGrade(questionId);
+  }
+
   return (
     <div className="w-full max-w-4xl mx-auto px-4">
       {/* 顶部工具条 */}
@@ -401,6 +411,13 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                                 }`}>
                                   {score}<span className="text-sm font-normal text-slate-400">/100</span>
                                 </span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); retriggerGrade(q.id); }}
+                                  disabled={gradingQids.has(q.id)}
+                                  className="text-[11px] text-indigo-500 hover:text-indigo-700 underline disabled:opacity-50"
+                                >
+                                  {gradingQids.has(q.id) ? '评分中…' : '🔄 重新评分'}
+                                </button>
                               </div>
                               {(r as any)?.interviewFeedback?.strengths?.length > 0 && (
                                 <div className="text-[12px]">
