@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCategories } from '@/contexts/CategoryContext';
 import { gradeQuiz } from '@/lib/checker';
+import { SUBJECTIVE_TYPES } from '@/lib/score';
 import { Quiz, Answer, Question } from '@/types';
 import QuestionCard from '@/components/QuestionCard';
 import AnswerSheet from '@/components/AnswerSheet';
@@ -376,7 +377,7 @@ export default function QuizPage() {
     const items = result.results || [];
     const needGrade = items.filter((item: any) => {
       const q = quiz?.questions.find((qq: Question) => qq.id === item.questionId);
-      return q && (q.type === 'interview' || q.type === 'essay') && typeof item.interviewScore !== 'number';
+      return q && SUBJECTIVE_TYPES.has(q.type) && typeof item.interviewScore !== 'number';
     });
     if (needGrade.length === 0) return;
 

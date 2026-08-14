@@ -9,6 +9,7 @@ import type { InterviewQuestionResult } from '@/lib/ai/interview-report-prompt';
 import { callChat, callChatStream } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
 import { extractJson } from '@/lib/ai/json-extractor';
+import { SUBJECTIVE_TYPES, recalcTotalScore } from '@/lib/score';
 
 /**
  * 对单道面试题进行 AI 打分（0-100）。
@@ -130,7 +131,7 @@ export async function POST(request: Request) {
   let questions: any[] = [];
   try { questions = JSON.parse(result.quiz?.questions || '[]'); } catch { questions = []; }
 
-  const interviewQuestions = questions.filter((q: any) => q.type === 'interview' || q.type === 'essay');
+  const interviewQuestions = questions.filter((q: any) => SUBJECTIVE_TYPES.has(q.type));
   if (interviewQuestions.length === 0) {
     return NextResponse.json({ error: '该测验中没有面试题/简答题' }, { status: 400 });
   }
@@ -207,7 +208,7 @@ export async function POST(request: Request) {
           if (combinedSignal.aborted) throw new Error('aborted');
           const item = resultItems[i];
           const q = questions.find((qq: any) => qq.id === item.questionId);
-          if (!q || (q.type !== 'interview' && q.type !== 'essay')) continue;
+          if (!q || !SUBJECTIVE_TYPES.has(q.type)) continue;
 
           const slot: GradingSlot = {
             index: i + 1,
@@ -335,7 +336,10 @@ export async function POST(request: Request) {
           // 不 await，后台异步写入，失败不影响报告生成
           prisma.quizResult.update({
             where: { id: resultId },
-            data: { results: JSON.stringify(updatedItems) },
+            data: {
+              results: JSON.stringify(updatedItems),
+              score: recalcTotalScore(updatedItems),
+            },
           }).catch((e) => { /* 回写失败不影响报告生成 */ });
         }
 

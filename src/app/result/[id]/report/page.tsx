@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { calcReportStats, ReportStats } from '@/lib/report/calculator';
+import { SUBJECTIVE_TYPES, recalcTotalScore } from '@/lib/score';
 import ReportView from '@/components/ReportView';
 
 export default function ReportPage() {
@@ -57,11 +58,11 @@ export default function ReportPage() {
         } catch { /* keep [] */ }
 
         // 4) 判断是否为面试题型（全部题目都是 interview 或 essay 类型）
-        const isInterview = questions.length > 0 && questions.every((q: any) => q.type === 'interview' || q.type === 'essay');
+        const isInterview = questions.length > 0 && questions.every((q: any) => SUBJECTIVE_TYPES.has(q.type));
 
         // 5) 计算本地统计（区分客观题与主观题）
         const stats = calcReportStats({
-          totalScore: found.score,
+          totalScore: recalcTotalScore(parsedResults),
           maxTotalScore: found.totalScore,
           results: parsedResults,
           questions,

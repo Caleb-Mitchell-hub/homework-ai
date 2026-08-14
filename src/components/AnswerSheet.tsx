@@ -9,6 +9,7 @@ import {
   formatCorrectAnswer,
   getReferenceAnswer,
 } from '@/lib/answer-sheet-helpers';
+import { SUBJECTIVE_TYPES } from '@/lib/score';
 import AIExplainPanel from '@/components/AIExplainPanel';
 import AIFollowUp from '@/components/AIFollowUp';
 import ManualGradePanel from '@/components/ManualGradePanel';
@@ -379,8 +380,8 @@ export default function AnswerSheet({ quiz, result }: { quiz: Quiz; result: Quiz
                     )}
                   </div>
 
-                  {/* 面试题/简答题 AI 评分 — 兼容 interview 和 essay 两种类型 */}
-                  {(q.type === 'interview' || q.type === 'essay') && (
+                  {/* 主观题 AI 评分 — 兼容 interview / essay / code 三种类型 */}
+                  {SUBJECTIVE_TYPES.has(q.type) && (
                     <div>
                       <div className="text-[10.5px] tracking-[0.2em] uppercase text-slate-400 mb-1.5 flex items-center justify-between">
                         <span>AI 评分</span>

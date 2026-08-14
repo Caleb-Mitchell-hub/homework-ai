@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { buildInterviewGradingPrompt, parseScore } from '@/lib/ai/grading-prompt';
+import { SUBJECTIVE_TYPES, recalcTotalScore } from '@/lib/score';
 import { callChat } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
 import { extractJson } from '@/lib/ai/json-extractor';
@@ -44,8 +45,8 @@ export async function POST(request: Request) {
     try { items = JSON.parse(result.results || '[]'); } catch { items = []; }
 
     const q = questions.find((qq: any) => qq.id === questionId);
-    if (!q || (q.type !== 'interview' && q.type !== 'essay')) {
-      return NextResponse.json({ error: '该题目不是面试题/简答题' }, { status: 400 });
+    if (!q || !SUBJECTIVE_TYPES.has(q.type)) {
+      return NextResponse.json({ error: '该题目不是主观题（面试题/简答题/代码题）' }, { status: 400 });
     }
 
     const item = items.find((it: any) => it.questionId === questionId);
@@ -116,7 +117,10 @@ export async function POST(request: Request) {
     );
     await prisma.quizResult.update({
       where: { id: resultId },
-      data: { results: JSON.stringify(updatedItems) },
+      data: {
+        results: JSON.stringify(updatedItems),
+        score: recalcTotalScore(updatedItems),
+      },
     });
 
     return NextResponse.json({ interviewScore, interviewFeedback });

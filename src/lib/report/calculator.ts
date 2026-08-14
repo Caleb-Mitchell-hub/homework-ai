@@ -1,4 +1,5 @@
 import { Question } from '@/types';
+import { SUBJECTIVE_TYPES } from '@/lib/score';
 
 export interface ResultItemLite {
   questionId: string;
@@ -12,9 +13,6 @@ export interface ResultItemLite {
 }
 
 export type DifficultyKey = '简单' | '中等' | '困难';
-
-/** 主观题类型：无客观正确答案，需要 AI 评分或人工批改 */
-const SUBJECTIVE_TYPES: Set<string> = new Set(['interview', 'essay']);
 
 export interface ReportStats {
   overview: {

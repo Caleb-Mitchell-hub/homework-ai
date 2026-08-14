@@ -3,6 +3,7 @@ import { getTokenFromHeaders, verifyToken, updateUserActiveTime } from '@/lib/au
 import { verifyAdminToken } from '@/lib/admin-auth';
 import { prisma } from '@/lib/prisma';
 import { buildDraftUpsertData } from '@/lib/results-dedup';
+import { SUBJECTIVE_TYPES } from '@/lib/score';
 
 /**
  * 解析请求中的 token —— 同时支持普通用户 token 和管理员 token。
@@ -113,7 +114,6 @@ export async function GET(request: Request) {
     ]);
 
     // 构建摘要（解析 results JSON 计数，不返回完整内容）
-    const SUBJECTIVE_TYPES = new Set(['interview', 'essay']);
     const results = rawResults.map((r: any) => {
       let items: any[] = [];
       try {
@@ -192,7 +192,6 @@ export async function POST(request: Request) {
     };
 
     // 计算客观题/主观题数量（需要从题库中读取题型）
-    const SUBJECTIVE_TYPES = new Set(['interview', 'essay']);
     let objectiveCount = 0;
     let subjectiveCount = 0;
     try {

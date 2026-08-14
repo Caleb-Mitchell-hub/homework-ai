@@ -5,6 +5,7 @@ import { callChatStream } from '@/lib/ai/providers';
 import { decryptApiKey } from '@/lib/ai/crypto';
 import { extractJson } from '@/lib/ai/json-extractor';
 import { buildReportPrompt } from '@/lib/ai/report-prompt';
+import { recalcTotalScore } from '@/lib/score';
 
 export const REPORT_COST = 5;
 
@@ -169,7 +170,7 @@ export async function POST(request: NextRequest) {
   const apiKey = decryptApiKey(provider.apiKeyCipher);
   const prompt = buildReportPrompt({
     quizTitle: quiz?.title ?? '',
-    score: result.score,
+    score: recalcTotalScore(items),
     totalScore: result.totalScore,
     byType,
     byDifficulty,
