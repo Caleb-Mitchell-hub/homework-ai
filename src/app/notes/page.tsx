@@ -138,13 +138,18 @@ export default function NotesPage() {
     const ok = confirm(`确定删除 ${selectedIds.size} 条笔记吗？`);
     if (!ok) return;
     try {
-      await fetch('/api/notes/batch-delete', {
+      const res = await fetch('/api/notes/batch-delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ ids: [...selectedIds] }),
       });
+      if (!res.ok) {
+        alert('批量删除失败，请重试');
+        return;
+      }
     } catch {
-      // ignore
+      alert('批量删除失败，请重试');
+      return;
     }
     setSelectedIds(new Set());
     setSelectMode(false);
@@ -179,6 +184,9 @@ export default function NotesPage() {
     if (search && !n.title.includes(search) && !n.content.includes(search)) return false;
     return true;
   });
+
+  // 当前筛选结果是否全部选中（用于「全选/取消全选」按钮文案与行为）
+  const allFilteredSelected = filtered.length > 0 && filtered.every((n) => selectedIds.has(n.id));
 
   const timeGroups = groupByTime
     ? (() => {
@@ -331,11 +339,19 @@ export default function NotesPage() {
           <span className="text-sm text-indigo-700">已选 {selectedIds.size} 条</span>
           <button
             onClick={() =>
-              setSelectedIds(filtered.length === selectedIds.size ? new Set() : new Set(filtered.map((n) => n.id)))
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                if (allFilteredSelected) {
+                  filtered.forEach((n) => next.delete(n.id));
+                } else {
+                  filtered.forEach((n) => next.add(n.id));
+                }
+                return next;
+              })
             }
             className="text-sm text-indigo-600 hover:underline"
           >
-            {filtered.length === selectedIds.size ? '取消全选' : '全选'}
+            {allFilteredSelected ? '取消全选' : '全选'}
           </button>
           <button onClick={handleBatchDelete} className="text-sm text-red-600 hover:underline disabled:opacity-40" disabled={!selectedIds.size}>
             批量删除
