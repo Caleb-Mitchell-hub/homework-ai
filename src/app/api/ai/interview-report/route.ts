@@ -92,6 +92,7 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
   const resultId: string | undefined = body?.resultId;
+  const force: boolean = !!body?.force;
   if (!resultId || typeof resultId !== 'string') {
     return NextResponse.json({ error: '缺少 resultId' }, { status: 400 });
   }
@@ -108,14 +109,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '无权访问' }, { status: 403 });
   }
 
-  // ---- 3. 缓存命中 → 直接返回 JSON ----
-  const existingReport = await prisma.aIReport.findUnique({ where: { resultId } });
-  if (existingReport) {
-    try {
-      const cached = JSON.parse(existingReport.content);
-      return NextResponse.json({ content: cached, cached: true, newBalance: null, costCredit: 0 });
-    } catch {
-      console.warn('面试报告缓存 JSON 解析失败，将重新生成');
+  // ---- 3. 缓存命中 → 直接返回 JSON（force 时跳过） ----
+  if (!force) {
+    const existingReport = await prisma.aIReport.findUnique({ where: { resultId } });
+    if (existingReport) {
+      try {
+        const cached = JSON.parse(existingReport.content);
+        return NextResponse.json({ content: cached, cached: true, newBalance: null, costCredit: 0 });
+      } catch {
+        console.warn('面试报告缓存 JSON 解析失败，将重新生成');
+      }
     }
   }
 
@@ -486,20 +489,20 @@ export async function POST(request: Request) {
         };
 
         // ---- 6e. 写缓存 + 发送完成事件 ----
-        try {
-          await prisma.aIReport.create({
-            data: {
-              resultId,
-              userId: payload.userId,
-              content: JSON.stringify({ ...content, generatedAt: new Date().toISOString() }),
-              costCredit: INTERVIEW_REPORT_COST,
-            },
-          });
-        } catch (saveErr: any) {
-          if (saveErr?.code !== 'P2002') {
-            console.error('保存面试报告缓存失败:', saveErr);
-          }
-        }
+        await prisma.aIReport.upsert({
+          where: { resultId },
+          update: {
+            userId: payload.userId,
+            content: JSON.stringify({ ...content, generatedAt: new Date().toISOString() }),
+            costCredit: INTERVIEW_REPORT_COST,
+          },
+          create: {
+            resultId,
+            userId: payload.userId,
+            content: JSON.stringify({ ...content, generatedAt: new Date().toISOString() }),
+            costCredit: INTERVIEW_REPORT_COST,
+          },
+        });
 
         const newBalance = user.credits - INTERVIEW_REPORT_COST;
 
