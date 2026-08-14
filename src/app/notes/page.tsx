@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Note, NoteType, NoteSource } from '@/types';
 import MarkdownView from '@/components/MarkdownView';
+import { downloadMarkdown, downloadZip } from '@/lib/download';
+import { notesToMarkdown } from '@/lib/notes-to-markdown';
 
 const typeLabels: Record<NoteType, string> = {
   question: '题目笔记',
@@ -19,6 +21,25 @@ const sourceLabels: Record<NoteSource, string> = {
   ai_report: 'AI报告',
 };
 
+function typeColor(type: NoteType): string {
+  if (type === 'question') return 'bg-violet-50 text-violet-600';
+  if (type === 'answer') return 'bg-emerald-50 text-emerald-600';
+  return 'bg-sky-50 text-sky-600';
+}
+
+function timeBucket(ts: number): string {
+  const now = new Date();
+  const d = new Date(ts);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((startOfToday - startOfDay) / dayMs);
+  if (diffDays <= 0) return '今天';
+  if (diffDays === 1) return '昨天';
+  if (diffDays <= 7) return '近 7 天';
+  return '更早';
+}
+
 export default function NotesPage() {
   const { user, token } = useAuth();
   const router = useRouter();
@@ -30,6 +51,10 @@ export default function NotesPage() {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sourceFilter, setSourceFilter] = useState<NoteSource | 'all'>('all');
+  const [groupByTime, setGroupByTime] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -108,11 +133,109 @@ export default function NotesPage() {
     }
   }
 
+  async function handleBatchDelete() {
+    if (!selectedIds.size) return;
+    const ok = confirm(`确定删除 ${selectedIds.size} 条笔记吗？`);
+    if (!ok) return;
+    try {
+      await fetch('/api/notes/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids: [...selectedIds] }),
+      });
+    } catch {
+      // ignore
+    }
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    await loadNotes();
+  }
+
+  async function handleBatchExport() {
+    const chosen = notes.filter((n) => selectedIds.has(n.id));
+    if (chosen.length === 0) return;
+    if (chosen.length === 1) {
+      downloadMarkdown(chosen[0].title, notesToMarkdown(chosen));
+    } else {
+      await downloadZip(
+        `笔记导出_${new Date().toISOString().slice(0, 10)}`,
+        chosen.map((n) => ({ name: n.title, content: notesToMarkdown([n]) })),
+      );
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const filtered = notes.filter((n) => {
     if (filter !== 'all' && n.type !== filter) return false;
+    if (sourceFilter !== 'all' && n.source !== sourceFilter) return false;
     if (search && !n.title.includes(search) && !n.content.includes(search)) return false;
     return true;
   });
+
+  const timeGroups = groupByTime
+    ? (() => {
+        const order: string[] = ['今天', '昨天', '近 7 天', '更早'];
+        const groups = new Map<string, Note[]>();
+        for (const n of filtered) {
+          const b = timeBucket(n.updatedAt);
+          const arr = groups.get(b);
+          if (arr) arr.push(n);
+          else groups.set(b, [n]);
+        }
+        return order.filter((b) => groups.has(b)).map((b) => ({ label: b, notes: groups.get(b)! }));
+      })()
+    : null;
+
+  function renderNoteItem(note: Note) {
+    return (
+      <div
+        key={note.id}
+        onClick={() => {
+          if (selectMode) toggleSelect(note.id);
+          else {
+            setSelectedId(note.id);
+            setEditing(false);
+          }
+        }}
+        className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+          selectedId === note.id
+            ? 'border-indigo-300 bg-indigo-50'
+            : selectedIds.has(note.id)
+            ? 'border-indigo-300 bg-indigo-50/50'
+            : 'border-slate-200 hover:border-indigo-200 bg-white'
+        }`}
+      >
+        <div className="flex items-center gap-2 mb-1">
+          {selectMode && (
+            <input
+              type="checkbox"
+              checked={selectedIds.has(note.id)}
+              onChange={() => toggleSelect(note.id)}
+              onClick={(e) => e.stopPropagation()}
+              className="accent-indigo-600"
+            />
+          )}
+          <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${typeColor(note.type)}`}>
+            {typeLabels[note.type]}
+          </span>
+          <span className="text-xs text-slate-400">{sourceLabels[note.source]}</span>
+        </div>
+        <h4 className="text-sm font-medium text-slate-800 truncate">{note.title}</h4>
+        <p className="text-xs text-slate-400 mt-1 truncate">{note.content.slice(0, 60)}</p>
+        <p className="text-xs text-slate-300 mt-1">
+          {new Date(note.updatedAt).toLocaleDateString('zh-CN')}
+        </p>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -137,12 +260,23 @@ export default function NotesPage() {
             <h1 className="text-2xl font-bold text-slate-900">📝 我的笔记</h1>
             <p className="text-sm text-slate-500 mt-1">管理所有题目笔记、答题笔记和AI输出记录</p>
           </div>
-        <button
-          onClick={() => startEdit()}
-          className="bg-indigo-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          + 新建笔记
-        </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setSelectMode(!selectMode);
+                setSelectedIds(new Set());
+              }}
+              className="text-sm text-slate-500 hover:text-slate-800 px-3 py-2 rounded-lg border border-slate-200"
+            >
+              {selectMode ? '退出多选' : '多选'}
+            </button>
+            <button
+              onClick={() => startEdit()}
+              className="bg-indigo-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              + 新建笔记
+            </button>
+          </div>
         </div>
       </div>
 
@@ -161,6 +295,18 @@ export default function NotesPage() {
             </button>
           ))}
         </div>
+        <select
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value as NoteSource | 'all')}
+          className="text-sm border border-slate-200 rounded-lg px-2 py-2 focus:outline-none focus:border-indigo-400"
+        >
+          <option value="all">全部来源</option>
+          {(Object.keys(sourceLabels) as NoteSource[]).map((s) => (
+            <option key={s} value={s}>
+              {sourceLabels[s]}
+            </option>
+          ))}
+        </select>
         <input
           type="text"
           placeholder="搜索笔记..."
@@ -168,7 +314,37 @@ export default function NotesPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 max-w-xs text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-400"
         />
+        <label className="flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={groupByTime}
+            onChange={(e) => setGroupByTime(e.target.checked)}
+            className="accent-indigo-600"
+          />
+          按时间分组
+        </label>
       </div>
+
+      {/* 多选模式工具栏 */}
+      {selectMode && (
+        <div className="flex items-center gap-3 mb-4 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
+          <span className="text-sm text-indigo-700">已选 {selectedIds.size} 条</span>
+          <button
+            onClick={() =>
+              setSelectedIds(filtered.length === selectedIds.size ? new Set() : new Set(filtered.map((n) => n.id)))
+            }
+            className="text-sm text-indigo-600 hover:underline"
+          >
+            {filtered.length === selectedIds.size ? '取消全选' : '全选'}
+          </button>
+          <button onClick={handleBatchDelete} className="text-sm text-red-600 hover:underline disabled:opacity-40" disabled={!selectedIds.size}>
+            批量删除
+          </button>
+          <button onClick={handleBatchExport} className="text-sm text-indigo-600 hover:underline disabled:opacity-40" disabled={!selectedIds.size}>
+            导出
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-6">
         {/* 笔记列表 */}
@@ -177,32 +353,17 @@ export default function NotesPage() {
             <p className="text-center text-slate-400 text-sm py-12">加载中...</p>
           ) : filtered.length === 0 ? (
             <p className="text-center text-slate-400 text-sm py-12">暂无笔记</p>
-          ) : (
-            <div className="space-y-2">
-              {filtered.map((note) => (
-                <div
-                  key={note.id}
-                  onClick={() => { setSelectedId(note.id); setEditing(false); }}
-                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                    selectedId === note.id
-                      ? 'border-indigo-300 bg-indigo-50'
-                      : 'border-slate-200 hover:border-indigo-200 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
-                      {typeLabels[note.type]}
-                    </span>
-                    <span className="text-xs text-slate-400">{sourceLabels[note.source]}</span>
-                  </div>
-                  <h4 className="text-sm font-medium text-slate-800 truncate">{note.title}</h4>
-                  <p className="text-xs text-slate-400 mt-1 truncate">{note.content.slice(0, 60)}</p>
-                  <p className="text-xs text-slate-300 mt-1">
-                    {new Date(note.updatedAt).toLocaleDateString('zh-CN')}
-                  </p>
+          ) : timeGroups ? (
+            <div className="space-y-3">
+              {timeGroups.map((group) => (
+                <div key={group.label}>
+                  <p className="text-xs font-medium text-slate-400 px-1 pb-1">{group.label}</p>
+                  <div className="space-y-2">{group.notes.map((note) => renderNoteItem(note))}</div>
                 </div>
               ))}
             </div>
+          ) : (
+            <div className="space-y-2">{filtered.map((note) => renderNoteItem(note))}</div>
           )}
         </div>
 
@@ -248,12 +409,18 @@ export default function NotesPage() {
             <div className="bg-white border border-slate-200 rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded ${typeColor(selected.type)}`}>
                     {typeLabels[selected.type]}
                   </span>
                   <span className="text-xs text-slate-400">{sourceLabels[selected.source]}</span>
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => downloadMarkdown(selected.title, notesToMarkdown([selected]))}
+                    className="text-sm text-sky-600 hover:text-sky-800 px-3 py-1 rounded-lg hover:bg-sky-50 transition-colors"
+                  >
+                    ⬇ 导出
+                  </button>
                   <button
                     onClick={() => startEdit(selected)}
                     className="text-sm text-indigo-600 hover:text-indigo-800 px-3 py-1 rounded-lg hover:bg-indigo-50 transition-colors"
