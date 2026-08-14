@@ -9,6 +9,9 @@ import RecordCard from '@/components/RecordCard';
 import RecordDetailDrawer from '@/components/RecordDetailDrawer';
 import { migrateCategoriesIfNeeded } from '@/lib/migrate-categories';
 import { useDialog } from '@/components/DialogProvider';
+import ExportDialog from '@/components/ExportDialog';
+import { resultToMarkdown, type ExportSections } from '@/lib/result-to-markdown';
+import { downloadZip } from '@/lib/download';
 
 const SYSTEM_TABS = [
   { key: 'all', label: '全部' },
@@ -52,6 +55,12 @@ function RecordsContent() {
   // 详情抽屉
   const selectedId = searchParams.get('id');
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // 批量导出状态
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageSize = 20;
@@ -162,6 +171,63 @@ function RecordsContent() {
     }
   };
 
+  // 切换单条选中
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // 批量导出
+  const handleExport = async (sections: ExportSections) => {
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const files: { name: string; content: string }[] = [];
+      await Promise.all(
+        [...selectedIds].map(async (id) => {
+          try {
+            const res = await fetch(`/api/export/result/${id}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const md = resultToMarkdown({
+              result: {
+                name: data.result.name,
+                score: data.result.score,
+                totalScore: data.result.totalScore,
+                submittedAt: data.result.submittedAt,
+                items: data.result.items,
+              },
+              quiz: data.quiz,
+              explanations: data.explanations,
+              followups: data.followups,
+              notes: data.notes,
+              report: data.report,
+              sections,
+            });
+            files.push({ name: data.result.name, content: md });
+          } catch (e) {
+            console.error('导出单条失败:', id, e);
+          }
+        })
+      );
+      if (files.length) {
+        await downloadZip(`答题记录导出_${new Date().toISOString().slice(0, 10)}`, files);
+      } else {
+        await dialog.alert({ title: '导出失败', message: '没有成功生成可导出的记录，请重试' });
+      }
+    } finally {
+      setExporting(false);
+      setSelectMode(false);
+      setSelectedIds(new Set());
+    }
+  };
+
   const totalPages = Math.ceil(total / pageSize);
 
   if (loading) {
@@ -186,6 +252,32 @@ function RecordsContent() {
           <h1 className="text-xl font-bold text-slate-800">答题记录</h1>
           <span className="text-[11px] text-slate-400 tabular-nums ml-auto">{total} 条记录</span>
         </div>
+
+        {/* 批量导出工具栏 */}
+        {selectMode && (
+          <div className="flex items-center gap-3 mb-4 px-3 py-2 bg-white/70 border border-slate-200/60 rounded-xl">
+            <span className="text-[12px] text-slate-600">已选 {selectedIds.size} 条</span>
+            <button
+              onClick={() => setSelectedIds(records.length === selectedIds.size ? new Set() : new Set(records.map((r) => r.id)))}
+              className="text-[12px] text-sky-500 hover:underline"
+            >
+              {records.length === selectedIds.size ? '取消全选' : '全选'}
+            </button>
+            <button
+              onClick={() => { if (selectedIds.size) setExportOpen(true); }}
+              disabled={!selectedIds.size || exporting}
+              className="text-[12px] text-indigo-600 hover:underline disabled:opacity-40"
+            >
+              {exporting ? '导出中...' : '批量导出'}
+            </button>
+            <button
+              onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+              className="text-[12px] text-slate-500 hover:underline ml-auto"
+            >
+              退出多选
+            </button>
+          </div>
+        )}
 
         {/* 搜索框 */}
         <div className="relative mb-4">
@@ -264,6 +356,9 @@ function RecordsContent() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+          <button onClick={() => setSelectMode(true)} className="text-[12px] text-sky-500 hover:underline ml-auto">
+            批量导出
+          </button>
         </div>
 
         {/* 记录列表 */}
@@ -285,15 +380,34 @@ function RecordsContent() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {records.map((r) => (
-              <RecordCard
+              <div
                 key={r.id}
-                record={r}
-                onViewDetail={(id) => {
-                  router.push(`/records?id=${id}`);
-                  setDrawerOpen(true);
-                }}
-                onDelete={handleDelete}
-              />
+                className={`relative ${selectMode ? 'rounded-2xl cursor-pointer' : ''} ${selectMode && selectedIds.has(r.id) ? 'ring-2 ring-indigo-400' : ''}`}
+              >
+                {selectMode && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="选择该记录"
+                      onClick={() => toggleSelect(r.id)}
+                      className="absolute inset-0 z-10 w-full h-full rounded-2xl"
+                    />
+                    <span
+                      className={`pointer-events-none absolute top-2 left-2 z-20 w-5 h-5 rounded-full border-2 flex items-center justify-center text-[11px] ${selectedIds.has(r.id) ? 'bg-indigo-500 border-indigo-500 text-white' : 'bg-white border-slate-300 text-transparent'}`}
+                    >
+                      ✓
+                    </span>
+                  </>
+                )}
+                <RecordCard
+                  record={r}
+                  onViewDetail={(id) => {
+                    router.push(`/records?id=${id}`);
+                    setDrawerOpen(true);
+                  }}
+                  onDelete={handleDelete}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -331,6 +445,13 @@ function RecordsContent() {
           token={token}
         />
       )}
+
+      {/* 批量导出对话框 */}
+      <ExportDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        onConfirm={handleExport}
+      />
     </div>
   );
 }
