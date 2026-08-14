@@ -25,11 +25,20 @@ export function downloadMarkdown(filename: string, content: string) {
   downloadBlob(content, `${sanitizeFilename(filename)}.md`, 'text/markdown');
 }
 
-/** 打包多个 Markdown 文件为 zip 并下载 */
+/** 打包多个 Markdown 文件为 zip 并下载（同名文件自动追加序号，避免 zip 内覆盖丢文件） */
 export async function downloadZip(filename: string, files: { name: string; content: string }[]) {
   const zip = new JSZip();
+  const used = new Set<string>();
   for (const f of files) {
-    zip.file(`${sanitizeFilename(f.name)}.md`, f.content);
+    const base = sanitizeFilename(f.name);
+    let candidate = base;
+    let i = 2;
+    while (used.has(candidate)) {
+      candidate = `${base} (${i})`;
+      i++;
+    }
+    used.add(candidate);
+    zip.file(`${candidate}.md`, f.content);
   }
   const blob = await zip.generateAsync({ type: 'blob' });
   downloadBlob(blob, `${sanitizeFilename(filename)}.zip`, 'application/zip');

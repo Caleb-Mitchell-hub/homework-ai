@@ -187,13 +187,14 @@ function RecordsContent() {
     setExporting(true);
     try {
       const files: { name: string; content: string }[] = [];
+      let failedCount = 0;
       await Promise.all(
         [...selectedIds].map(async (id) => {
           try {
             const res = await fetch(`/api/export/result/${id}`, {
               headers: { Authorization: `Bearer ${token}` },
             });
-            if (!res.ok) return;
+            if (!res.ok) { failedCount++; return; }
             const data = await res.json();
             const md = resultToMarkdown({
               result: {
@@ -212,12 +213,16 @@ function RecordsContent() {
             });
             files.push({ name: data.result.name, content: md });
           } catch (e) {
+            failedCount++;
             console.error('导出单条失败:', id, e);
           }
         })
       );
       if (files.length) {
         await downloadZip(`答题记录导出_${new Date().toISOString().slice(0, 10)}`, files);
+        if (failedCount > 0) {
+          await dialog.alert({ title: '部分导出失败', message: `${failedCount} 条记录导出失败，其余已成功导出` });
+        }
       } else {
         await dialog.alert({ title: '导出失败', message: '没有成功生成可导出的记录，请重试' });
       }

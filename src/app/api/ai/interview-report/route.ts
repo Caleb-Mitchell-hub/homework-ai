@@ -238,6 +238,7 @@ export async function POST(request: Request) {
           where: { isActive: true },
         });
         if (!provider) {
+          await refund();
           send({ type: 'error', message: '没有可用的 AI 服务商，请联系管理员配置', code: 'NO_PROVIDER' });
           return;
         }

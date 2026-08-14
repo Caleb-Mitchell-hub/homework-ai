@@ -93,7 +93,7 @@ export default function AIExplainPanel({ questionId, questionContent, questionTy
             onClick={async () => {
               const ok = await dialog.confirm({
                 title: '重新解析',
-                message: '将重新生成 AI 解析并扣除对应积分，是否继续？',
+                message: '将重新生成 AI 解析并按难度扣除积分（简单 10 / 中等 15 / 困难 30），是否继续？',
                 confirmText: '重新解析',
               });
               if (ok) ask(true);

@@ -410,7 +410,9 @@ export default function ReportView({
               onClick={async () => {
                 const ok = await dialog.confirm({
                   title: '重新生成报告',
-                  message: '将重新生成报告并扣除对应积分，是否继续？',
+                  message: isInterview
+                    ? '将重新生成报告并扣除 100 积分，是否继续？'
+                    : '将重新生成报告并扣除 5 积分，是否继续？',
                   confirmText: '重新生成',
                 });
                 if (!ok) return;
