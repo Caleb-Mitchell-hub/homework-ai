@@ -230,6 +230,9 @@ function RecordsContent() {
 
   const totalPages = Math.ceil(total / pageSize);
 
+  // 当前可见记录是否全部选中（用于「全选/取消全选」按钮文案与行为）
+  const allVisibleSelected = records.length > 0 && records.every((r) => selectedIds.has(r.id));
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-sky-50 via-white to-emerald-50">
@@ -258,10 +261,20 @@ function RecordsContent() {
           <div className="flex items-center gap-3 mb-4 px-3 py-2 bg-white/70 border border-slate-200/60 rounded-xl">
             <span className="text-[12px] text-slate-600">已选 {selectedIds.size} 条</span>
             <button
-              onClick={() => setSelectedIds(records.length === selectedIds.size ? new Set() : new Set(records.map((r) => r.id)))}
+              onClick={() =>
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  if (allVisibleSelected) {
+                    records.forEach((r) => next.delete(r.id));
+                  } else {
+                    records.forEach((r) => next.add(r.id));
+                  }
+                  return next;
+                })
+              }
               className="text-[12px] text-sky-500 hover:underline"
             >
-              {records.length === selectedIds.size ? '取消全选' : '全选'}
+              {allVisibleSelected ? '取消全选' : '全选'}
             </button>
             <button
               onClick={() => { if (selectedIds.size) setExportOpen(true); }}
