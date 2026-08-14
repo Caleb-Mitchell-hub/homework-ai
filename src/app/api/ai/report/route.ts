@@ -49,26 +49,29 @@ export async function POST(request: NextRequest) {
   updateUserActiveTime(payload.userId);
 
   const body = await request.json().catch(() => null);
-  if (!body?.resultId) {
+  const { resultId, force } = body ?? {};
+  if (!resultId) {
     return NextResponse.json({ error: '缺少 resultId' }, { status: 400 });
   }
 
   const result = await prisma.quizResult.findUnique({
-    where: { id: body.resultId },
+    where: { id: resultId },
   });
   if (!result || result.userId !== payload.userId) {
     return NextResponse.json({ error: '结果不存在' }, { status: 404 });
   }
 
-  // 1) 缓存命中 → 直接返回 JSON（无需流式）
-  const existing = await prisma.aIReport.findUnique({
-    where: { resultId: result.id },
-  });
-  if (existing) {
-    return NextResponse.json({
-      content: JSON.parse(existing.content),
-      cached: true,
+  // 1) 缓存命中 → 直接返回 JSON（force 时跳过）
+  if (!force) {
+    const existing = await prisma.aIReport.findUnique({
+      where: { resultId: result.id },
     });
+    if (existing) {
+      return NextResponse.json({
+        content: JSON.parse(existing.content),
+        cached: true,
+      });
+    }
   }
 
   // 2) 计算统计数据
@@ -265,9 +268,15 @@ export async function POST(request: NextRequest) {
 
         const content = { knowledgePoints: parsed.knowledgePoints, advice: parsed.advice };
 
-        // 写缓存
-        await prisma.aIReport.create({
-          data: {
+        // 写缓存（force 时按 resultId 覆盖旧记录）
+        await prisma.aIReport.upsert({
+          where: { resultId: result.id },
+          update: {
+            userId: payload.userId,
+            content: JSON.stringify({ ...content, generatedAt: new Date().toISOString() }),
+            costCredit: REPORT_COST,
+          },
+          create: {
             resultId: result.id,
             userId: payload.userId,
             content: JSON.stringify({ ...content, generatedAt: new Date().toISOString() }),
