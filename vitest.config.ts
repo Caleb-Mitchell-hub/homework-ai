@@ -6,6 +6,7 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.{ts,tsx}'],
     globals: false,
+    pool: 'forks',
     setupFiles: ['./tests/setup.ts'],
     // Note: component tests under tests/components/ set `// @vitest-environment happy-dom` per-file.
   },
