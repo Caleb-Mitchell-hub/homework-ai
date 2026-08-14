@@ -30,7 +30,7 @@ export default function AIExplainPanel({ questionId, questionContent, questionTy
     | { status: 'error'; message: string }
   >({ status: 'idle' });
 
-  const ask = async () => {
+  const ask = async (force = false) => {
     if (!token) return;
     if (user?.isGuest) {
       await dialog.alert({ title: '游客受限', message: '游客功能暂未开通，请登录使用 AI 解析' });
@@ -41,7 +41,7 @@ export default function AIExplainPanel({ questionId, questionContent, questionTy
       const res = await fetch('/api/ai/explain', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ questionId, content: questionContent, type: questionType, userAnswer, correctAnswer, options }),
+        body: JSON.stringify({ questionId, content: questionContent, type: questionType, userAnswer, correctAnswer, options, force }),
       });
       const data = await res.json();
       if (res.status === 400 && data.required != null) {
@@ -64,7 +64,7 @@ export default function AIExplainPanel({ questionId, questionContent, questionTy
   if (state.status === 'idle') {
     return (
       <button
-        onClick={ask}
+        onClick={() => ask()}
         className="px-3 py-1.5 bg-gradient-to-r from-violet-500 to-pink-500 text-white text-[12px] rounded-lg hover:opacity-90"
       >
         🧠 AI 解析此题
@@ -84,9 +84,24 @@ export default function AIExplainPanel({ questionId, questionContent, questionTy
   if (state.status === 'done') {
     return (
       <div className="mt-2 space-y-1.5">
-        <div className="text-[11px] text-emerald-600 flex items-center gap-1">
-          <span>✓</span>
-          <span>AI 解析完成</span>
+        <div className="text-[11px] text-emerald-600 flex items-center gap-1 justify-between">
+          <span className="flex items-center gap-1">
+            <span>✓</span>
+            <span>AI 解析完成</span>
+          </span>
+          <button
+            onClick={async () => {
+              const ok = await dialog.confirm({
+                title: '重新解析',
+                message: '将重新生成 AI 解析并扣除对应积分，是否继续？',
+                confirmText: '重新解析',
+              });
+              if (ok) ask(true);
+            }}
+            className="text-[11px] text-indigo-500 hover:text-indigo-700 underline"
+          >
+            🔄 重新解析
+          </button>
         </div>
         <div
           className="p-3 bg-violet-50/50 border border-violet-100 rounded-lg min-h-[40px]"
@@ -115,7 +130,7 @@ export default function AIExplainPanel({ questionId, questionContent, questionTy
           ? '⚠️ AI 服务暂时不可达，请稍后重试。积分已自动退还。'
           : state.message}
       </div>
-      <button onClick={ask} className="text-[11px] text-sky-600 hover:underline">重试</button>
+      <button onClick={() => ask()} className="text-[11px] text-sky-600 hover:underline">重试</button>
     </div>
   );
 }
