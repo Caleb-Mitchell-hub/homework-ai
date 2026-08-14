@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   updateUserActiveTime(userId);
 
   const body = await request.json().catch(() => null);
-  const { questionId, content, type, userAnswer, correctAnswer, options } = body || {};
+  const { questionId, content, type, userAnswer, correctAnswer, options, force } = body || {};
   if (!questionId || !content) {
     return NextResponse.json({ error: 'questionId 和 content 必填' }, { status: 400 });
   }
@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       userAnswer,
       correctAnswer,
       options,
+      force: !!force,
       signal: request.signal,
     });
     return NextResponse.json(result);

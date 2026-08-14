@@ -65,25 +65,29 @@ export async function explainQuestion(opts: {
   correctAnswer?: string;
   options?: string[];
   signal?: AbortSignal;
+  force?: boolean;
 }): Promise<{ content: string; cached: boolean; newBalance: number; costCredit: number }> {
   // 1. 缓存查询 — 按 (userId, questionId, userAnswer) 精确匹配
   //    userAnswer 不同 = 不同的解析需求，必须重新生成，不能复用旧缓存
+  //    force=true 时跳过缓存，强制重新生成
   const userAnswer = opts.userAnswer || '';
-  const cached = await prisma.aIExplanation.findFirst({
-    where: { userId: opts.userId, questionId: opts.questionId, userAnswer },
-    orderBy: { createdAt: 'desc' },
-  });
-  if (cached) {
-    // 防御:旧缓存可能存了空内容（AI 返回空 → 缓存了空）,删掉重来
-    if (!cached.content?.trim()) {
-      await prisma.aIExplanation.delete({ where: { id: cached.id } });
-    } else {
-      return {
-        content: cached.content,
-        cached: true,
-        newBalance: await getBalance(opts.userId),
-        costCredit: 0,
-      };
+  if (!opts.force) {
+    const cached = await prisma.aIExplanation.findFirst({
+      where: { userId: opts.userId, questionId: opts.questionId, userAnswer },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (cached) {
+      // 防御:旧缓存可能存了空内容（AI 返回空 → 缓存了空）,删掉重来
+      if (!cached.content?.trim()) {
+        await prisma.aIExplanation.delete({ where: { id: cached.id } });
+      } else {
+        return {
+          content: cached.content,
+          cached: true,
+          newBalance: await getBalance(opts.userId),
+          costCredit: 0,
+        };
+      }
     }
   }
 
@@ -165,6 +169,13 @@ export async function explainQuestion(opts: {
     }
 
     // 5. 写缓存（含 userAnswer，确保不同答案不会复用缓存）
+    //    force 时先删除旧的 (userId, questionId, userAnswer) 记录，避免残留多份缓存
+    if (opts.force) {
+      await prisma.aIExplanation.deleteMany({
+        where: { userId: opts.userId, questionId: opts.questionId, userAnswer },
+      });
+    }
+
     await prisma.aIExplanation.create({
       data: {
         userId: opts.userId,
