@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Quiz, QuizResult } from '@/types';
 import AnswerSheet from '@/components/AnswerSheet';
+import ExportDialog from '@/components/ExportDialog';
+import { resultToMarkdown, type ExportSections } from '@/lib/result-to-markdown';
+import { downloadMarkdown } from '@/lib/download';
 
 interface Props {
   resultId: string | null;
@@ -18,6 +21,7 @@ export default function RecordDetailDrawer({ resultId, open, onClose, token }: P
   const [error, setError] = useState<string | null>(null);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [result, setResult] = useState<QuizResult | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
 
   useEffect(() => {
     if (!open || !resultId) return;
@@ -125,6 +129,14 @@ export default function RecordDetailDrawer({ resultId, open, onClose, token }: P
                 查看完整报告
               </button>
             )}
+            {result?.id && (
+              <button
+                onClick={() => setExportOpen(true)}
+                className="text-[11px] px-2.5 py-1.5 rounded-lg bg-sky-50 text-sky-600 hover:bg-sky-100 transition-colors"
+              >
+                ⬇ 导出
+              </button>
+            )}
             <button
               onClick={onClose}
               className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all flex items-center justify-center"
@@ -152,6 +164,33 @@ export default function RecordDetailDrawer({ resultId, open, onClose, token }: P
           )}
         </div>
       </div>
+
+      <ExportDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        onConfirm={async (sections: ExportSections) => {
+          setExportOpen(false);
+          try {
+            const res = await fetch(`/api/export/result/${resultId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error('导出数据加载失败');
+            const data = await res.json();
+            const md = resultToMarkdown({
+              result: { name: data.result.name, score: data.result.score, totalScore: data.result.totalScore, submittedAt: data.result.submittedAt, items: data.result.items },
+              quiz: data.quiz,
+              explanations: data.explanations,
+              followups: data.followups,
+              notes: data.notes,
+              report: data.report,
+              sections,
+            });
+            downloadMarkdown(data.result.name, md);
+          } catch {
+            alert('导出失败，请重试');
+          }
+        }}
+      />
     </>
   );
 }
