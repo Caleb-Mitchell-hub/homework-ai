@@ -80,7 +80,7 @@ export default function ReportView({
   };
 
   /** SSE 流式生成普通报告 */
-  const generate = async () => {
+  const generate = async (force = false) => {
     if (user?.isGuest) {
       await dialog.alert({ title: '游客受限', message: '游客功能暂未开通，请登录使用 AI 报告' });
       return;
@@ -94,7 +94,7 @@ export default function ReportView({
       const res = await fetch('/api/ai/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ resultId }),
+        body: JSON.stringify({ resultId, force }),
       });
 
       // 缓存命中 → 普通 JSON 响应
@@ -163,7 +163,7 @@ export default function ReportView({
   };
 
   /** SSE 流式面试题报告生成（100积分） */
-  const generateInterviewReport = async () => {
+  const generateInterviewReport = async (force = false) => {
     if (user?.isGuest) {
       await dialog.alert({ title: '游客受限', message: '游客功能暂未开通，请登录使用 AI 面试分析' });
       return;
@@ -177,7 +177,7 @@ export default function ReportView({
       const res = await fetch('/api/ai/interview-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ resultId }),
+        body: JSON.stringify({ resultId, force }),
       });
 
       // 缓存命中 / 错误 → JSON 响应
@@ -404,12 +404,32 @@ export default function ReportView({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-[22px] text-slate-800 font-semibold">📊 答题报告</h2>
-        <button
-          onClick={exportReport}
-          className="px-3 py-1.5 text-[12px] bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700 transition-colors"
-        >
-          📥 导出报告
-        </button>
+        <div className="flex items-center gap-2">
+          {report && (
+            <button
+              onClick={async () => {
+                const ok = await dialog.confirm({
+                  title: '重新生成报告',
+                  message: '将重新生成报告并扣除对应积分，是否继续？',
+                  confirmText: '重新生成',
+                });
+                if (!ok) return;
+                if (isInterview) await generateInterviewReport(true);
+                else await generate(true);
+              }}
+              disabled={loading}
+              className="text-sm text-indigo-600 hover:text-indigo-800 px-3 py-1 rounded-lg border border-indigo-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors disabled:opacity-50"
+            >
+              🔄 重新生成报告
+            </button>
+          )}
+          <button
+            onClick={exportReport}
+            className="px-3 py-1.5 text-[12px] bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700 transition-colors"
+          >
+            📥 导出报告
+          </button>
+        </div>
       </div>
 
       {/* 模块 1:总览 */}
@@ -542,7 +562,7 @@ export default function ReportView({
             </h3>
             {!report && (
               <button
-                onClick={generateInterviewReport}
+                onClick={() => generateInterviewReport()}
                 disabled={loading}
                 className="px-3 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-[12px] rounded-lg hover:from-indigo-600 hover:to-purple-600 disabled:opacity-70"
               >
@@ -654,7 +674,7 @@ export default function ReportView({
             </h3>
             {!report && (
               <button
-                onClick={generate}
+                onClick={() => generate()}
                 disabled={loading}
                 className="px-3 py-1.5 bg-gradient-to-r from-sky-400 to-emerald-400 text-white text-[12px] rounded-lg hover:from-sky-500 hover:to-emerald-500 disabled:opacity-70"
               >
