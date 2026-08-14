@@ -59,16 +59,19 @@ export function resultToMarkdown(opts: {
 
   quiz.questions.forEach((q, i) => {
     const item = result.items.find((it) => it.questionId === q.id);
-    lines.push(`## ${i + 1}. ${q.title}`);
-    lines.push('');
 
-    if (sections.question && (q as any).options?.length) {
-      lines.push('### 选项');
+    if (sections.question) {
+      lines.push(`## ${i + 1}. ${q.title}`);
       lines.push('');
-      (q as any).options.forEach((opt: string, idx: number) => {
-        lines.push(`${String.fromCharCode(65 + idx)}. ${opt}`);
-      });
-      lines.push('');
+
+      if ((q as any).options?.length) {
+        lines.push('### 选项');
+        lines.push('');
+        (q as any).options.forEach((opt: string, idx: number) => {
+          lines.push(`${String.fromCharCode(65 + idx)}. ${opt}`);
+        });
+        lines.push('');
+      }
     }
 
     if (sections.userAnswer) {

@@ -34,4 +34,15 @@ describe('resultToMarkdown', () => {
     expect(md).not.toContain('你的答案');
     expect(md).toContain('1+1=?');
   });
+
+  it('question 关闭后题干不输出', () => {
+    const md = resultToMarkdown({
+      result: { name: 'r', score: 0, totalScore: 5, submittedAt: '', items },
+      quiz: { title: 't', questions },
+      explanations: {}, followups: {}, notes: [], report: null,
+      sections: { question: false, userAnswer: true, correctAnswer: true, aiScore: true, aiExplain: true, notes: true, followups: true, report: true },
+    });
+    expect(md).not.toContain('1+1=?');
+    expect(md).not.toContain('### 选项');
+  });
 });
